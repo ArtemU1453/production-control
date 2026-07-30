@@ -7,6 +7,8 @@ export const storageKeys = {
   wastes: "narezka.store.wastes",
   archivedJumbos: "narezka.store.archivedJumbos",
   emailQueue: "narezka.store.emailQueue",
+  documents: "narezka.store.documents",
+  documentsMeta: "narezka.store.documentsMeta",
   settings: "narezka.store.settings",
 } as const;
 

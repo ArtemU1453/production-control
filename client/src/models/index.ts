@@ -34,3 +34,8 @@ export { WasteKind, wasteKindTitle } from "./Waste";
 export { JumboOperationType, jumboOperationTitle } from "./JumboOperation";
 export { ReportType, ReportFormat, ReportStatus } from "./Report";
 export { defaultSettings } from "./Settings";
+export {
+  DocumentSchedule,
+  documentScheduleTitle,
+  documentScheduleOrder,
+} from "./DocumentSchedule";

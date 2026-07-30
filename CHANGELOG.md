@@ -1,5 +1,135 @@
 # CHANGELOG
 
+## Этап 6 — PDF-документы и рассылка по электронной почте
+
+> Report Center Этапа 5 не изменён — используются существующие `ReportBuilder`
+> и `ReportData`. В веб-сборке `PDFBuilder` формирует самодостаточный
+> print-ready HTML-документ (браузер сохраняет его как PDF; нативный
+> PDF-байтовый рендерер — это drop-in провайдер). Отправка идёт через
+> подключаемый `EmailTransport` (по умолчанию — симуляция, т.к. в чистом
+> клиенте нет SMTP). Алгоритм расчёта не изменён.
+
+### Модуль `documents/`
+
+```
+documents/
+├── models/       GeneratedDocument (+DocumentStatus), PdfDocument, Email*
+├── pdf/          PdfTemplate (единый стиль) + PDFBuilder
+├── email/        EmailValidation, EmailTemplate, EmailService
+├── providers/    EmailTransport (+ Local; seam для SMTP/API/1С/ERP/SharePoint)
+├── history/      DocumentRepository
+├── scheduler/    DocumentScheduler
+├── services/     DocumentService
+├── viewmodels/   useDocuments / useDocumentCompose / useDocumentPreview / useDocumentScheduler
+├── views/        DocumentsView, DocumentComposeView, DocumentPreviewView, DocumentFrame
+└── documentsCenter.ts, index.ts
+```
+
+### Архитектура PDFBuilder
+
+```ts
+interface PDFBuilder { build(report: ReportData, options?): PdfDocument }
+```
+
+Получает **только `ReportData`**, не обращается к хранилищу и не считает.
+Все 7 типов отчётов проходят через единый `PdfTemplate` (логотип, название,
+дата формирования, период, таблица, итоговые показатели, номер страницы, дата
+печати) — все документы выглядят одинаково.
+
+### Архитектура EmailService
+
+```
+DocumentService → EmailService.send(envelope) → EmailTransport.send(envelope)
+```
+
+`EmailService` перед отправкой проверяет: наличие получателей, корректность всех
+адресов (To/Cc/Bcc), наличие вложения. Поддерживаются несколько получателей.
+`EmailTransport` — единственная точка расширения для реальной доставки
+(SMTP/API/1С/ERP/SharePoint); бандл-транспорт симулирует доставку.
+
+### Структура истории документов (`GeneratedDocument`)
+
+`id (UUID)`, `title`, `kind`, `createdAt`, `periodLabel`, `recipients[]`,
+`cc[]`, `bcc[]`, `sizeBytes`, `status` (generated/sending/sent/failed),
+`error?`, `mimeType`, `content` (сохранённый документ), `reportId`,
+`automatic`, `sentAt?`. **Повторная отправка использует сохранённый документ**
+без повторной генерации.
+
+### Ручная и автоматическая отправка
+
+- **Ручная**: экран «Новый документ» — выбор типа отчёта, периода и получателей,
+  предпросмотр PDF, затем «Сформировать и отправить».
+- **Автоматическая**: `DocumentScheduler` (ежедневно/еженедельно/ежемесячно,
+  по умолчанию ежемесячно). Клиент не имеет фонового демона, поэтому планировщик
+  запускается при старте приложения и формирует отчёты один раз за период
+  (месяц). В конце месяца автоматически формируются **производственный** и
+  **складской** отчёты; при включённой авторассылке — отправляются.
+
+### Обработка ошибок
+
+Неудачная отправка сохраняет статус `Ошибка` и текст ошибки; из истории или
+карточки документа доступна повторная отправка.
+
+### Шаблон письма
+
+Тема: `Производственный отчёт за {month}`; текст по умолчанию — авто-письмо.
+`{month}` подставляется. Настраивается в разделе настроек.
+
+### Настройки (AppStorage)
+
+Добавлены: получатели, копия (CC), скрытая копия (BCC), тема письма, текст
+письма, расписание, включение автоматической отправки.
+
+### UI
+
+Раздел **«Документы»**: история (`DocumentsView`), составление и ручная отправка
+(`DocumentComposeView`), просмотр сохранённого документа с печатью/повторной
+отправкой (`DocumentPreviewView`). Точки входа — карточка на Dashboard, кнопки в
+«Аналитике» и предпросмотре отчёта.
+
+### Диаграмма Documents Module
+
+```
+ReportCenterService.generate(kind, filter) → ReportData
+        │
+        ▼
+DocumentService ──► PDFBuilder(ReportData) ──► PdfDocument ──► DocumentRepository (история)
+        │                                                         ▲
+        └──► EmailService.send(envelope) ──► EmailTransport       │ resend (сохранённый документ)
+                                                    ▲
+                              DocumentScheduler (по расписанию) ──┘
+```
+
+### Точки расширения для будущих интеграций
+
+- **Доставка**: новый `EmailTransport` (SMTP, REST API, 1С, ERP, SharePoint).
+- **Форматы**: `PDFBuilder`/`PdfTemplate` может уступить место нативному
+  PDF-рендереру; `ReportData` уже готов для Excel/CSV (Этап 5).
+- **API**: `ReportData` и `GeneratedDocument` — готовая полезная нагрузка.
+
+### Изменённые файлы
+
+```
+models/Settings.ts (email-поля), models/DocumentSchedule.ts (new), models/index.ts,
+storage/StorageKeys.ts (documents/documentsMeta), core/di/container.ts,
+App.tsx (роуты + запуск планировщика), views/DashboardView.tsx (карточка),
+views/SettingsView.tsx (рассылка), reports/views/{AnalyticsView,ReportPreviewView}.tsx,
+vite.config.ts (разбиение чанков radix/icons)
+```
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений (все чанки < 500 КБ).
+- Harness (in-memory store) — **29/29**: PDF для всех 7 отчётов, содержимое
+  шаблона (логотип/период/дата печати/страница), история, ручная отправка,
+  валидация (нет получателей / некорректный адрес), повторная отправка из
+  сохранённого документа, планировщик (ежемесячно, один раз за период, off),
+  несколько получателей.
+- Движок расчёта идентичен `main`.
+
+---
+
 ## Этап 5 — Report Center (универсальные производственные отчёты)
 
 > Платформа та же; «SwiftData» — слой репозиториев над `KeyValueStore`. **PDF,

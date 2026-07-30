@@ -30,6 +30,7 @@ import {
   type ReportService,
   type WarehouseService,
 } from "../../services";
+import { createReportCenter, type ReportCenter } from "../../reports";
 
 /**
  * Application composition root.
@@ -54,6 +55,8 @@ export interface AppContainer {
   email: EmailService;
   emailQueue: EmailQueue;
   warehouse: WarehouseService;
+  /** Report Center: report generation, cache and export/email providers. */
+  reportCenter: ReportCenter;
 }
 
 export function createAppContainer(
@@ -64,10 +67,11 @@ export function createAppContainer(
   const cuttingSessions = createCuttingSessionRepository(store);
   const wastes = createWasteRepository(store);
   const archivedJumbos = createArchivedJumboRepository(store);
+  const materials = createMaterialRepository(store);
   return {
     store,
     cuttingSessions,
-    materials: createMaterialRepository(store),
+    materials,
     jumbos,
     jumboOperations,
     wastes,
@@ -85,5 +89,13 @@ export function createAppContainer(
       wastes,
       archivedJumbos,
     ),
+    reportCenter: createReportCenter({
+      materials,
+      jumbos,
+      archivedJumbos,
+      cuttingSessions,
+      wastes,
+      jumboOperations,
+    }),
   };
 }

@@ -184,7 +184,7 @@ export function DashboardView() {
           <DashboardCard title="Склад" subtitle={`Всего Джамбов: ${counts.total}`} icon="warehouse" href="/warehouse" tone="accent" />
           <DashboardCard title="История" subtitle={`Заказов: ${sessionsCount}`} icon="history" href="/history" />
           <DashboardCard title="Архив" subtitle={`В архиве: ${counts.archived}`} icon="archive" href="/archive" tone="accent" />
-          <DashboardCard title="Отчёты" subtitle="PDF и рассылка" icon="reports" href="/reports" badge="Скоро" />
+          <DashboardCard title="Аналитика" subtitle="Отчёты предприятия" icon="analytics" href="/reports" />
           <DashboardCard title="Настройки" subtitle="Профиль и оформление" icon="settings" href="/settings" />
         </div>
       </div>

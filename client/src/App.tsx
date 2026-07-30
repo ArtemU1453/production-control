@@ -12,11 +12,16 @@ import {
   MaterialsView,
   ProductionView,
   ReceiptView,
-  ReportsView,
   SettingsView,
   WarehouseView,
 } from "@/views";
+import { AnalyticsView, ReportPreviewView } from "@/reports/views";
+import { allReportKinds, type ReportKind } from "@/reports";
 import NotFound from "@/pages/not-found";
+
+function isReportKind(value: string): value is ReportKind {
+  return (allReportKinds as readonly string[]).includes(value);
+}
 
 /** Top-level route table. The tab bar is rendered outside the switch so it
  *  stays persistent across navigation, mirroring a native TabView. */
@@ -45,7 +50,12 @@ function AppRouter() {
           {(params) => <ArchiveDetailView archiveId={params.id} />}
         </Route>
 
-        <Route path="/reports" component={ReportsView} />
+        <Route path="/reports" component={AnalyticsView} />
+        <Route path="/reports/:kind">
+          {(params) =>
+            isReportKind(params.kind) ? <ReportPreviewView kind={params.kind} /> : <NotFound />
+          }
+        </Route>
         <Route path="/settings" component={SettingsView} />
         <Route component={NotFound} />
       </Switch>

@@ -16,7 +16,7 @@ export const tabs: readonly TabDefinition[] = [
   { key: "materials", path: "/materials", label: strings.tabs.materials, icon: "material" },
   { key: "warehouse", path: "/warehouse", label: strings.tabs.warehouse, icon: "warehouse" },
   { key: "history", path: "/history", label: strings.tabs.history, icon: "history" },
-  { key: "reports", path: "/reports", label: strings.tabs.reports, icon: "reports" },
+  { key: "reports", path: "/reports", label: strings.tabs.reports, icon: "analytics" },
   { key: "settings", path: "/settings", label: strings.tabs.settings, icon: "settings" },
 ];
 

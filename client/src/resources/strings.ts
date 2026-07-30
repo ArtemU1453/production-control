@@ -9,8 +9,13 @@ export const strings = {
     materials: "Материалы",
     warehouse: "Склад",
     history: "История",
-    reports: "Отчёты",
+    reports: "Аналитика",
     settings: "Настройки",
+  },
+  analytics: {
+    title: "Аналитика",
+    subtitle: "Центр производственных отчётов",
+    empty: "Отчёты не найдены",
   },
   dashboard: {
     title: "Обзор",

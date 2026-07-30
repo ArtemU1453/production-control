@@ -17,7 +17,6 @@ export {
   type WarehouseFilter,
   type WarehouseSortKey,
 } from "./useWarehouseViewModel";
-export { useReportsViewModel, type ReportKindCard } from "./useReportsViewModel";
 export { useSettingsViewModel } from "./useSettingsViewModel";
 export {
   useMaterialsViewModel,

@@ -1,5 +1,143 @@
 # CHANGELOG
 
+## Этап 5 — Report Center (универсальные производственные отчёты)
+
+> Платформа та же; «SwiftData» — слой репозиториев над `KeyValueStore`. **PDF,
+> Email, Excel, CSV на этом этапе не реализуются** — подготовлены только данные,
+> фильтрация, агрегирование и предпросмотр. Алгоритм расчёта нарезки не изменён.
+
+### Главное
+
+Добавлен отдельный модуль **`reports/`** — единый центр формирования отчётов.
+Архитектура позволяет добавлять новые отчёты и форматы экспорта **без изменения
+существующего кода** (Open/Closed): новый отчёт = новый Builder + строка в
+реестре; новый формат = новый провайдер.
+
+### Структура модуля
+
+```
+reports/
+├── models/       ReportKind, ReportFilter (+grouping/sort), ReportData
+├── repositories/ ReportRepository (агрегатор), ReportContext
+├── builders/     ReportBuilder (протокол) + 7 построителей + registry + support
+├── services/     ReportCenterService, ReportCache
+├── export/       ExportProvider, EmailReportProvider, ReportExporter + провайдеры
+├── viewmodels/   useAnalyticsViewModel, useReportPreviewViewModel
+├── views/        AnalyticsView, ReportPreviewView
+└── reportCenter.ts (composition root), index.ts
+```
+
+### ReportBuilderProtocol
+
+```ts
+interface ReportBuilder {
+  readonly kind: ReportKind;
+  build(context: ReportContext): ReportData;   // получает только подготовленные данные
+}
+```
+
+Builder не обращается к хранилищу и не выполняет тяжёлых вычислений: все данные
+загружаются один раз через `ReportRepository.loadContext(filter)` и передаются в
+контексте.
+
+### Структура ReportData (универсальный источник экспорта)
+
+```ts
+interface ReportData {
+  id: string;              // UUID
+  kind: ReportKind;
+  title: string;
+  generatedAt: string;
+  period: { startDate?; endDate?; label };
+  filter: ReportFilter;
+  table: { columns: ReportColumn[]; rows: ReportRow[] };   // подготовленная таблица
+  summary: ReportSummaryItem[];                            // итоговые показатели
+  metadata: Record<string, string | number>;
+}
+```
+
+Эта модель — единственный вход для будущих PDF / Excel / CSV / Email / API.
+
+### Виды отчётов (7)
+
+Производственный (главный), по заказам, по Джамбам, по складу, по операторам,
+по станкам, по материалам. Каждый — отдельный Builder.
+
+### Фильтры / группировка / сортировка
+
+- **Фильтры**: период (дата начала/окончания), материал, оператор, станок,
+  заказчик, номер заказа, номер Джамба, статус.
+- **Группировка**: день / неделя / месяц / квартал / год (для отчётов по времени).
+- **Сортировка**: дата / материал / оператор / станок / заказы / расход.
+
+### Итоговые показатели
+
+Считаются автоматически в Builder из подготовленного контекста (заказы, рулоны,
+расход, полезная площадь, брак, тех. остаток, процент использования и др.).
+
+### Кэш и производительность
+
+`ReportCache` кэширует `ReportData` по ключу `kind + фильтр + сигнатура данных`.
+Сигнатура вычисляется в `ReportRepository` из объёмов и последних меток времени —
+любое изменение данных инвалидирует кэш. История не пересчитывается; агрегация
+идёт по замороженным накопителям и снимкам архива.
+
+### Точки расширения (подготовлены, без реализации)
+
+- **PDF** — `ExportProvider` (`createPdfExportProvider`).
+- **Excel** — `createExcelProvider`.
+- **CSV** — `createCsvProvider`.
+- **Email** — `EmailReportProvider` (`createEmailReportProvider`).
+- **API** — тот же `ReportData` пригоден как полезная нагрузка.
+
+Провайдеры зарегистрированы в `ReportExporter`; сейчас возвращают
+`available: false` без выполнения экспорта.
+
+### UI
+
+Новый раздел **«Аналитика»** (переиспользована вкладка «Отчёты»): список отчётов
+с поиском (`AnalyticsView`) и универсальный предпросмотр с фильтрами,
+группировкой, сортировкой, таблицей и итогами (`ReportPreviewView`).
+
+### Диаграмма формирования отчёта
+
+```
+View (ReportPreviewView)
+  → ViewModel (useReportPreviewViewModel)  — фильтр + группировка + сортировка
+    → ReportCenterService.generate(kind, filter)
+        ├─ ReportRepository.loadContext(filter)  → ReportContext (загрузка 1×)
+        ├─ ReportCache (по kind+filter+signature)
+        └─ getReportBuilder(kind).build(context) → ReportData
+    → таблица + итоги в предпросмотре
+```
+
+### Новые файлы
+
+Весь каталог `client/src/reports/**` (модели, ReportRepository, 7 билдеров +
+support + registry, ReportCenterService, ReportCache, export-провайдеры,
+2 ViewModel, 2 View, reportCenter, барели).
+
+### Изменённые файлы
+
+```
+core/di/container.ts (reportCenter), App.tsx (роуты /reports, /reports/:kind),
+app/navigation.ts (иконка), resources/strings.ts (Аналитика),
+views/DashboardView.tsx (карточка «Аналитика»), views/index.ts, viewmodels/index.ts
+```
+
+Удалены заглушки `views/ReportsView.tsx` и `viewmodels/useReportsViewModel.ts`.
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений.
+- Harness (in-memory store) — **28/28**: все 7 отчётов формируются, фильтры
+  (материал/дата), группировка (месяц), сортировка (материал), итоги,
+  включение архива без дублей, кэш (hit + инвалидация), провайдеры экспорта.
+- Движок расчёта идентичен `main`.
+
+---
+
 ## Этап 4 — Полный жизненный цикл Джамба
 
 > Платформа та же (React + TS + Vite); «SwiftData» — слой репозиториев над

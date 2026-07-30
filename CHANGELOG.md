@@ -1,5 +1,111 @@
 # CHANGELOG
 
+## Этап 7 — Производственная аналитика и KPI
+
+> Используются существующие модели (Jumbo, CuttingSession, JumboOperation,
+> Waste) и агрегирующий слой Report Center (`ReportContext`/`ReportRepository`)
+> без изменений. Все показатели строятся автоматически из накопленных данных.
+> Графики (Swift Charts → **recharts**, уже в зависимостях) подгружаются лениво.
+> Алгоритм расчёта не изменён.
+
+### Главное
+
+Добавлен единый аналитический центр (`analytics/`). **KpiEngine** — чистый,
+единственный источник производственных KPI; он же используется Dashboard —
+дублирование расчётов устранено.
+
+### Структура KPI Engine
+
+```
+analytics/
+├── models.ts            ProductionKpi, JumboAnalytics, OperatorStat, MachineStat,
+│                        MaterialStat, Ranking, TrendPoint, PeriodComparison, KpiCard
+├── KpiEngine.ts         чистые функции ReportContext → KPI (без доступа к хранилищу)
+├── AnalyticsService.ts  загрузка 1×, кэш, overview(filter), comparison(kind)
+├── viewmodels/          useAnalyticsViewModel
+└── views/               AnalyticsCenterView + AnalyticsCharts (recharts, lazy)
+```
+
+`KpiEngine` реализует единый контракт: каждая функция получает подготовленный
+`ReportContext` (загруженный один раз через общий `ReportRepository`) и никогда
+не обращается к хранилищу и не пересчитывает историю. Новый KPI добавляется как
+функция движка — существующий код не меняется.
+
+### Экраны/секции аналитики
+
+- **KPI производства**: заказы, рулоны, расход материала, полезная площадь,
+  брак, тех. остаток, общие потери, средний % использования, средний расход на
+  заказ, средний расход на рулон (с изменением к прошлому периоду).
+- **Аналитика Джамбов**: количество по статусам, средняя площадь, средний
+  остаток, средний % использования.
+- **Операторы / Станки / Материалы**: таблицы показателей.
+- **Динамика**: линейные и столбчатые графики с группировкой (день/неделя/
+  месяц/квартал/год) + круговая диаграмма по статусам Джамбов.
+- **Сравнение периодов**: сегодня/вчера, месяц/прошлый месяц, год/прошлый год —
+  с изменением в процентах.
+- **Рейтинги**: ТОП материалов, операторов, заказчиков, причин брака.
+- **Фильтры**: период, материал, оператор, станок, заказчик.
+
+### Формулы показателей
+
+- `materialUsedM = Σ session.result.used_length_m`
+- `usefulAreaM2 = Σ session.result.useful_area_m2`
+- `processedArea = Σ (materialWidthMm/1000 × used_length_m)`
+- `avgUsagePercent = usefulArea / processedArea × 100`
+- `waste/scrap/totalLosses = Σ` замороженной статистики архива за период
+- `avgPerOrderM = materialUsedM / orders`; `avgPerRollM = materialUsedM / rolls`
+- Джамбы: `avgAreaM2 = avg(initialWinding × width/1000)`,
+  `avgRemainderM = avg(остаток)`, `avgUsagePercent = avg(efficiency)`
+- Станок: `productivity = rolls / hours`
+- Сравнение: `deltaPercent = (current − previous) / previous × 100`
+- Тренд: суммы по бакетам `bucketLabel(createdAt, grouping)`
+
+### Кэширование аналитики
+
+`AnalyticsService` загружает данные один раз через общий `ReportRepository`
+(`Promise.all`) и кэширует `AnalyticsOverview` по ключу `фильтр + сигнатура
+данных`. Пока данные не изменились, повторное открытие экрана не выполняет
+вычислений; любая складская операция меняет сигнатуру и инвалидирует кэш.
+Тяжёлых вычислений во View нет; графики загружаются лениво (`React.lazy`).
+
+### Dashboard
+
+Главный экран переведён на `AnalyticsService` — те же агрегированные данные,
+без дублирования расчётов.
+
+### Новые файлы
+
+```
+analytics/{models,KpiEngine,AnalyticsService,index}.ts
+analytics/viewmodels/useAnalyticsViewModel.ts
+analytics/views/{AnalyticsCenterView,AnalyticsCharts,index}.tsx
+```
+
+### Изменённые файлы
+
+```
+core/di/container.ts (analytics), viewmodels/useDashboardViewModel.ts (reuse engine),
+reports/builders/support.ts (+widthMm в JumboLine), reports/index.ts (экспорт
+jumboLines/bucketLabel/JumboLine), App.tsx (роут /analytics),
+app/navigation.ts + resources/strings.ts (вкладка «Отчёты»),
+views/DashboardView.tsx (карточки «Аналитика»/«Отчёты»)
+```
+
+Удалён неиспользуемый `analytics/statistics.ts`.
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений (recharts изолирован в ленивом
+  чанке `AnalyticsCharts`, основной бандл < 500 КБ).
+- Harness (in-memory store) — **27/27**: KPI производства и формулы, аналитика
+  Джамбов, операторы/станки/материалы, рейтинги (в т.ч. причины брака), тренд по
+  бакетам, фильтр по материалу, сравнение периодов (%), кэш (hit + инвалидация),
+  группировка по дням.
+- Движок расчёта идентичен `main`.
+
+---
+
 ## Этап 6 — PDF-документы и рассылка по электронной почте
 
 > Report Center Этапа 5 не изменён — используются существующие `ReportBuilder`

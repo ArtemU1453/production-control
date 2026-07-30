@@ -159,6 +159,7 @@ export interface JumboLine {
   materialCode: string;
   status: JumboStatus;
   statusTitle: string;
+  widthMm: number;
   initialWindingM: number;
   usedLength: number;
   remainderM: number;
@@ -181,6 +182,7 @@ function lineFromJumbo(jumbo: Jumbo): JumboLine {
     materialCode: jumbo.materialCode,
     status: jumbo.status,
     statusTitle: jumboStatusTitle(jumbo.status),
+    widthMm: jumbo.widthMm,
     initialWindingM: jumbo.initialWindingM,
     usedLength: round1(jumbo.usedLength),
     remainderM: round1(jumbo.currentRemainderM),
@@ -205,6 +207,7 @@ function lineFromArchived(entry: ArchivedJumbo): JumboLine {
     materialCode: jumbo.materialCode,
     status: jumbo.status,
     statusTitle: jumboStatusTitle(jumbo.status),
+    widthMm: jumbo.widthMm,
     initialWindingM: statistics.initialWindingM,
     usedLength: statistics.usedLengthM,
     remainderM: statistics.finalRemainderM,

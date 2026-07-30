@@ -32,6 +32,11 @@ import {
 } from "../../services";
 import { createReportCenter, type ReportCenter } from "../../reports";
 import { createDocumentsCenter, type DocumentsCenter } from "../../documents";
+import {
+  createAnalyticsService,
+  createKpiEngine,
+  type AnalyticsService,
+} from "../../analytics";
 
 /**
  * Application composition root.
@@ -60,6 +65,8 @@ export interface AppContainer {
   reportCenter: ReportCenter;
   /** Documents: PDF generation, email delivery, history and scheduling. */
   documents: DocumentsCenter;
+  /** Analytics: KPI engine over aggregated data (shared with the Dashboard). */
+  analytics: AnalyticsService;
 }
 
 export function createAppContainer(
@@ -107,5 +114,6 @@ export function createAppContainer(
       settings,
       store,
     }),
+    analytics: createAnalyticsService(reportCenter.repository, createKpiEngine()),
   };
 }

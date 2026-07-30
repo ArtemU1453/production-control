@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
-import { JumboStatus, type ArchivedJumbo, type CuttingSession, type Jumbo } from "@/models";
+import { ComparisonKind } from "@/analytics";
+import type { CuttingSession } from "@/models";
 
 export interface JumboStatusCounts {
   total: number;
@@ -34,115 +35,69 @@ interface DashboardViewModel {
   reload: () => Promise<void>;
 }
 
-/** Averages the frozen archive statistics (O(n) over archived Jumbos). */
-function computeArchiveTotals(archived: ArchivedJumbo[]): ArchiveTotals {
-  if (archived.length === 0) {
-    return { archivedCount: 0, avgUsefulPercent: 0, avgWastePercent: 0 };
-  }
-  let useful = 0;
-  let waste = 0;
-  for (const entry of archived) {
-    useful += entry.statistics.usefulPercent;
-    waste += entry.statistics.wastePercent;
-  }
-  return {
-    archivedCount: archived.length,
-    avgUsefulPercent: Math.round((useful / archived.length) * 10) / 10,
-    avgWastePercent: Math.round((waste / archived.length) * 10) / 10,
-  };
-}
-
-function countByStatus(jumbos: Jumbo[]): JumboStatusCounts {
-  const counts: JumboStatusCounts = {
-    total: jumbos.length,
-    onStock: 0,
-    inWork: 0,
-    toWriteOff: 0,
-    archived: 0,
-  };
-  for (const jumbo of jumbos) {
-    switch (jumbo.status) {
-      case JumboStatus.onStock:
-        counts.onStock += 1;
-        break;
-      case JumboStatus.inWork:
-        counts.inWork += 1;
-        break;
-      case JumboStatus.toWriteOff:
-        counts.toWriteOff += 1;
-        break;
-      case JumboStatus.archived:
-        counts.archived += 1;
-        break;
-    }
-  }
-  return counts;
-}
+const emptyCounts: JumboStatusCounts = { total: 0, onStock: 0, inWork: 0, toWriteOff: 0, archived: 0 };
+const emptyTotals: ProductionTotals = { ordersToday: 0, rollsMade: 0, materialUsedM: 0, usefulAreaM2: 0 };
+const emptyArchive: ArchiveTotals = { archivedCount: 0, avgUsefulPercent: 0, avgWastePercent: 0 };
 
 /**
- * Aggregates production totals from the stored Jumbo accumulators (O(n) over
- * Jumbos) — never by replaying the operation history — plus today's session
- * count.
+ * ViewModel for the dashboard. All aggregation is delegated to the shared
+ * analytics engine (via {@link AnalyticsService}) so the Dashboard and the
+ * Analytics screen never duplicate KPI calculations.
  */
-function computeTotals(jumbos: Jumbo[], sessions: CuttingSession[]): ProductionTotals {
-  const today = new Date().toISOString().slice(0, 10);
-  let rollsMade = 0;
-  let materialUsedM = 0;
-  let usefulAreaM2 = 0;
-  for (const jumbo of jumbos) {
-    rollsMade += jumbo.rollsCount;
-    materialUsedM += jumbo.usedLength;
-    usefulAreaM2 += jumbo.usefulArea;
-  }
-  const ordersToday = sessions.filter((s) => s.createdAt.slice(0, 10) === today).length;
-  return {
-    ordersToday,
-    rollsMade,
-    materialUsedM: Math.round(materialUsedM),
-    usefulAreaM2: Math.round(usefulAreaM2 * 10) / 10,
-  };
-}
-
-/** ViewModel for the dashboard. Reads live warehouse counters, production
- *  totals and the latest session straight from the repositories. */
 export function useDashboardViewModel(): DashboardViewModel {
-  const { cuttingSessions, jumbos, materials, archivedJumbos } = useServices();
+  const { analytics, cuttingSessions } = useServices();
   const [loading, setLoading] = useState(true);
-  const [sessionList, setSessionList] = useState<CuttingSession[]>([]);
-  const [jumboList, setJumboList] = useState<Jumbo[]>([]);
-  const [archivedList, setArchivedList] = useState<ArchivedJumbo[]>([]);
+  const [lastSession, setLastSession] = useState<CuttingSession | null>(null);
+  const [sessionsCount, setSessionsCount] = useState(0);
   const [materialsCount, setMaterialsCount] = useState(0);
+  const [counts, setCounts] = useState<JumboStatusCounts>(emptyCounts);
+  const [totals, setTotals] = useState<ProductionTotals>(emptyTotals);
+  const [archiveTotals, setArchiveTotals] = useState<ArchiveTotals>(emptyArchive);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [sessions, jumbosData, materialsData, archivedData] = await Promise.all([
+      const [overview, today, sessions] = await Promise.all([
+        analytics.overview(),
+        analytics.comparison(ComparisonKind.dayOverDay),
         cuttingSessions.getAll(),
-        jumbos.getAll(),
-        materials.getAll(),
-        archivedJumbos.getAll(),
       ]);
-      setSessionList(sessions);
-      setJumboList(jumbosData);
-      setMaterialsCount(materialsData.length);
-      setArchivedList(archivedData);
+      const { production, jumbos } = overview;
+      setCounts({
+        total: jumbos.total,
+        onStock: jumbos.onStock,
+        inWork: jumbos.inWork,
+        toWriteOff: jumbos.toWriteOff,
+        archived: jumbos.archived,
+      });
+      setTotals({
+        ordersToday: today.metrics.find((m) => m.key === "orders")?.current ?? 0,
+        rollsMade: production.rolls,
+        materialUsedM: production.materialUsedM,
+        usefulAreaM2: production.usefulAreaM2,
+      });
+      const lossBase = production.usefulAreaM2 + production.totalLossesM2;
+      setArchiveTotals({
+        archivedCount: jumbos.archived,
+        avgUsefulPercent: jumbos.avgUsagePercent,
+        avgWastePercent: lossBase > 0 ? Math.round((production.wasteAreaM2 / lossBase) * 1000) / 10 : 0,
+      });
+      setMaterialsCount(overview.materials.length);
+      setSessionsCount(sessions.length);
+      setLastSession(sessions[0] ?? null);
     } finally {
       setLoading(false);
     }
-  }, [cuttingSessions, jumbos, materials, archivedJumbos]);
+  }, [analytics, cuttingSessions]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const counts = useMemo(() => countByStatus(jumboList), [jumboList]);
-  const totals = useMemo(() => computeTotals(jumboList, sessionList), [jumboList, sessionList]);
-  const archiveTotals = useMemo(() => computeArchiveTotals(archivedList), [archivedList]);
-
   return {
     loading,
-    lastSession: sessionList[0] ?? null,
-    sessionsCount: sessionList.length,
+    lastSession,
+    sessionsCount,
     materialsCount,
     counts,
     totals,

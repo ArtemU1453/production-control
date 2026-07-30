@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useServices } from "@/core/di/AppServices";
-import { nowIso } from "@/extensions/date";
-import { makeId } from "@/utilities/id";
 import type { CalcResult } from "@/services";
-import type { CuttingOrder, CuttingOrderInput } from "@/models";
+import type { CuttingOrderInput } from "@/models";
 import {
   calculatorDefaults,
   calculatorSchema,
@@ -16,13 +14,10 @@ interface CalculatorViewModel {
   form: ReturnType<typeof useForm<CalculatorFormValues>>;
   plan: CalcResult | null;
   errorMsg: string | null;
-  saving: boolean;
-  justSaved: boolean;
   applyAdditionalWidth: (width: number) => void;
-  save: () => Promise<void>;
 }
 
-function toInput(values: CalculatorFormValues): CuttingOrderInput {
+export function toCalculatorInput(values: CalculatorFormValues): CuttingOrderInput {
   return {
     materialWidthMm: values.materialWidthMm,
     usefulWidthMm: values.usefulWidthMm,
@@ -35,15 +30,16 @@ function toInput(values: CalculatorFormValues): CuttingOrderInput {
 }
 
 /**
- * ViewModel for the calculator screen. It owns the form, derives the live plan
- * through the calculation service, and can persist a computed order to history.
+ * ViewModel for the free (standalone) calculator screen. It owns the form and
+ * derives the live plan through the calculation service. Production runs that
+ * consume a Jumbo go through {@link useProductionViewModel} instead.
  *
  * The calculation itself is unchanged: the service forwards the same arguments,
  * in the same order, to the original engine, so every result matches the
  * previous implementation exactly.
  */
 export function useCalculatorViewModel(): CalculatorViewModel {
-  const { calculation, cuttingOrders, settings } = useServices();
+  const { calculation } = useServices();
 
   const form = useForm<CalculatorFormValues>({
     resolver: zodResolver(calculatorSchema),
@@ -75,16 +71,12 @@ export function useCalculatorViewModel(): CalculatorViewModel {
       return { plan: null, errorMsg: null };
     }
     try {
-      return { plan: calculation.calculate(toInput(parsed.data)), errorMsg: null };
+      return { plan: calculation.calculate(toCalculatorInput(parsed.data)), errorMsg: null };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Ошибка расчёта";
+      const message = error instanceof Error ? error.message : "Ошибка расчёта";
       return { plan: null, errorMsg: message };
     }
   }, [values, calculation]);
-
-  const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
 
   const applyAdditionalWidth = useCallback(
     (width: number) => {
@@ -96,36 +88,5 @@ export function useCalculatorViewModel(): CalculatorViewModel {
     [form],
   );
 
-  const save = useCallback(async () => {
-    const parsed = calculatorSchema.safeParse(values);
-    if (!parsed.success || !plan) {
-      return;
-    }
-    setSaving(true);
-    try {
-      const currentSettings = await settings.load();
-      const order: CuttingOrder = {
-        id: makeId(),
-        createdAt: nowIso(),
-        input: toInput(parsed.data),
-        result: plan,
-        operator: currentSettings.operator || undefined,
-      };
-      await cuttingOrders.save(order);
-      setJustSaved(true);
-      window.setTimeout(() => setJustSaved(false), 2000);
-    } finally {
-      setSaving(false);
-    }
-  }, [values, plan, settings, cuttingOrders]);
-
-  return {
-    form,
-    plan,
-    errorMsg,
-    saving,
-    justSaved,
-    applyAdditionalWidth,
-    save,
-  };
+  return { form, plan, errorMsg, applyAdditionalWidth };
 }

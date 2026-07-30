@@ -54,4 +54,13 @@ export interface JumboOperation {
   usefulAreaDeltaM2?: number;
   wasteAreaDeltaM2?: number;
   scrapAreaDeltaM2?: number;
+
+  /** Production context, recorded for a `calculation` operation. */
+  machine?: string;
+  customer?: string;
+  orderNumber?: string;
+  /** Jumbo remainder after this operation, in metres. */
+  remainderAfterM?: number;
+  /** Rolls produced by this operation. */
+  rollsCount?: number;
 }

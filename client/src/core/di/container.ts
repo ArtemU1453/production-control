@@ -2,13 +2,13 @@ import { LocalStorageStore } from "../../storage/LocalStorageStore";
 import type { KeyValueStore } from "../../storage/KeyValueStore";
 import {
   createArchivedJumboRepository,
-  createCuttingOrderRepository,
+  createCuttingSessionRepository,
   createJumboOperationRepository,
   createJumboRepository,
   createMaterialRepository,
   createSettingsRepository,
   type ArchivedJumboRepository,
-  type CuttingOrderRepository,
+  type CuttingSessionRepository,
   type JumboOperationRepository,
   type JumboRepository,
   type MaterialRepository,
@@ -35,7 +35,7 @@ import {
  */
 export interface AppContainer {
   store: KeyValueStore;
-  cuttingOrders: CuttingOrderRepository;
+  cuttingSessions: CuttingSessionRepository;
   materials: MaterialRepository;
   jumbos: JumboRepository;
   jumboOperations: JumboOperationRepository;
@@ -52,9 +52,10 @@ export function createAppContainer(
 ): AppContainer {
   const jumbos = createJumboRepository(store);
   const jumboOperations = createJumboOperationRepository(store);
+  const cuttingSessions = createCuttingSessionRepository(store);
   return {
     store,
-    cuttingOrders: createCuttingOrderRepository(store),
+    cuttingSessions,
     materials: createMaterialRepository(store),
     jumbos,
     jumboOperations,
@@ -63,6 +64,6 @@ export function createAppContainer(
     calculation: createCalculationService(),
     reports: createReportService(),
     email: createEmailService(),
-    warehouse: createWarehouseService(jumbos, jumboOperations),
+    warehouse: createWarehouseService(jumbos, jumboOperations, cuttingSessions),
   };
 }

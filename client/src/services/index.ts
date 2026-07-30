@@ -8,11 +8,13 @@ export type {
   EmailMessage,
   EmailDeliveryResult,
 } from "./EmailService";
-export { createWarehouseService } from "./WarehouseService";
+export { createWarehouseService, LOW_REMAINDER_THRESHOLD_M } from "./WarehouseService";
 export type {
   WarehouseService,
   JumboReceiptItem,
   ReceiptBatch,
+  CompleteCalculationParams,
+  CompleteCalculationOutcome,
 } from "./WarehouseService";
 export {
   validateRequired,

@@ -1,6 +1,16 @@
 export { useCalculatorViewModel } from "./useCalculatorViewModel";
-export { useDashboardViewModel, type JumboStatusCounts } from "./useDashboardViewModel";
+export {
+  useDashboardViewModel,
+  type JumboStatusCounts,
+  type ProductionTotals,
+} from "./useDashboardViewModel";
 export { useHistoryViewModel } from "./useHistoryViewModel";
+export {
+  useProductionViewModel,
+  type ProductionParams,
+  type ProductionPlanStatus,
+  NOT_ENOUGH_MATERIAL_MESSAGE,
+} from "./useProductionViewModel";
 export {
   useWarehouseViewModel,
   type WarehouseFilter,

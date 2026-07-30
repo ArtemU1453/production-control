@@ -2,7 +2,7 @@ import {
   ReportFormat,
   ReportStatus,
   ReportType,
-  type CuttingOrder,
+  type CuttingSession,
   type Report,
 } from "../models";
 import { nowIso } from "../extensions/date";
@@ -20,22 +20,22 @@ export interface ProductionReportRequest {
  * it in a `pending` state — no output file is produced yet.
  */
 export interface ReportService {
-  generateOrderReport(order: CuttingOrder): Promise<Report>;
+  generateSessionReport(session: CuttingSession): Promise<Report>;
   generateProductionReport(request: ProductionReportRequest): Promise<Report>;
 }
 
 /** Default implementation: records the request without rendering a file. */
 export function createReportService(): ReportService {
   return {
-    async generateOrderReport(order) {
+    async generateSessionReport(session) {
       return {
         id: makeId(),
-        title: `Отчёт по заказу от ${order.createdAt}`,
+        title: `Отчёт по заказу ${session.order.orderNumber || session.jumboStockNumber}`,
         type: ReportType.order,
         format: ReportFormat.pdf,
         status: ReportStatus.pending,
         createdAt: nowIso(),
-        orderId: order.id,
+        orderId: session.id,
       };
     },
     async generateProductionReport(request) {

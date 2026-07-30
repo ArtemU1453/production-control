@@ -13,7 +13,6 @@ import {
   CardView,
   InfoRow,
   MetricCard,
-  PrimaryButton,
   ScreenScaffold,
   StatusBadge,
 } from "@/components";
@@ -23,11 +22,11 @@ import { formatHours } from "@/extensions/number";
 import { useCalculatorViewModel } from "@/viewmodels";
 import { CuttingScheme } from "./calculator/CuttingScheme";
 
-/** The cutting calculator screen. All computation flows through the ViewModel,
- *  which preserves the original engine behaviour exactly. */
+/** The free (standalone) cutting calculator. All computation flows through the
+ *  ViewModel, which preserves the original engine behaviour exactly. Production
+ *  runs that consume a Jumbo use the Production screen instead. */
 export function CalculatorView() {
-  const { form, plan, errorMsg, saving, justSaved, applyAdditionalWidth, save } =
-    useCalculatorViewModel();
+  const { form, plan, errorMsg, applyAdditionalWidth } = useCalculatorViewModel();
 
   const inputClass =
     "rounded-2xl bg-emerald-950/20 border-emerald-800/30 focus-visible:ring-emerald-500/30";
@@ -253,16 +252,6 @@ export function CalculatorView() {
                   <InfoRow label="Примерное время:" value={formatHours(plan.estimated_hours)} last />
                 )}
               </div>
-
-              <PrimaryButton
-                type="button"
-                icon={icons.history}
-                loading={saving}
-                fullWidth
-                onClick={() => void save()}
-              >
-                {justSaved ? "Сохранено" : "Сохранить в историю"}
-              </PrimaryButton>
             </div>
           ) : (
             <div className="py-4 text-center text-sm text-muted-foreground">

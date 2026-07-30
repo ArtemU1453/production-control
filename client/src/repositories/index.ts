@@ -1,9 +1,9 @@
 export type { Repository, Identifiable } from "./Repository";
 export { CollectionRepository } from "./Repository";
 export {
-  createCuttingOrderRepository,
-  type CuttingOrderRepository,
-} from "./CuttingOrderRepository";
+  createCuttingSessionRepository,
+  type CuttingSessionRepository,
+} from "./CuttingSessionRepository";
 export { createJumboRepository, type JumboRepository } from "./JumboRepository";
 export {
   createMaterialRepository,

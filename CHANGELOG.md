@@ -1,5 +1,109 @@
 # CHANGELOG
 
+## Этап 3 — Интеграция расчёта нарезки со складом
+
+> Платформа та же (React + TS + Vite). «SwiftData» — слой репозиториев над
+> `KeyValueStore`. **Математический алгоритм расчёта нарезки не изменён** —
+> движок вызывается с теми же аргументами; изменена только производственная
+> логика вокруг расчёта.
+
+### Главное
+
+- Каждый производственный расчёт теперь выполняется по конкретному Джамбу:
+  оператор заполняет информацию о заказе, выбирает Джамб вручную, после
+  успешного расчёта остаток и накопительные показатели Джамба обновляются
+  инкрементально, создаётся операция журнала и сессия истории, Dashboard
+  показывает актуальные данные.
+- Свободный калькулятор (Этап 1) сохранён как «Быстрый расчёт» — те же
+  результаты, без списания со склада.
+
+### Новая логика расчёта и её связь со складом
+
+1. Экран **«Производство»**: карточка «Информация о заказе» (дата, время,
+   заказчик, номер заказа, оператор, станок №1/№2, комментарий).
+2. Кнопка **«Выбрать Джамб»** открывает список доступных Джамбов (без
+   авто-выбора/FIFO). Выбранный Джамб показывается в блоке «Используемый Джамб»
+   только для чтения.
+3. Материал берётся из выбранного Джамба: ширина материала = ширина Джамба,
+   доступная длина = текущий остаток Джамба. Расчёт считается тем же движком.
+4. Перед расчётом проверяется: выбран Джамб; остаток > 0; статус ≠ «Подлежит
+   списанию»; материала достаточно. Если нет — показывается сообщение
+   «Недостаточно материала…», расчёт не выполняется.
+5. Первое использование Джамба: дата начала использования, статус «В работе»
+   (жёлтый), операция `usageStart`.
+6. После выполнения `WarehouseService.completeCalculation` **инкрементально**:
+   уменьшает остаток, увеличивает `usedLength`, `usefulArea`, `ordersCount`,
+   `rollsCount`, пересчитывает `efficiency` (из накопителей, не по истории),
+   создаёт `JumboOperation` типа `calculation` и `CuttingSession`.
+7. Если остаток < 300 м — статус «Подлежит списанию» (красный) и уведомление;
+   такой Джамб исключается из выбора для новых расчётов.
+
+### Автоматически обновляемые накопительные показатели (в записи Джамба)
+
+`currentRemainderM`, `usedLength`, `usefulArea`, `ordersCount`, `rollsCount`,
+`efficiency`. История никогда не пересчитывается целиком.
+
+### Новые файлы
+
+```
+models/Machine.ts, models/CuttingSession.ts
+repositories/CuttingSessionRepository.ts
+viewmodels/useProductionViewModel.ts
+views/ProductionView.tsx
+```
+
+### Изменённые файлы
+
+```
+models/CuttingRoll.ts        (+ RollDestination, sessionId)
+models/CuttingOrder.ts       (сведён к CuttingOrderInput)
+models/Jumbo.ts              (+ ordersCount, rollsCount)
+models/JumboOperation.ts     (+ machine, customer, orderNumber, remainderAfterM, rollsCount)
+models/index.ts
+services/WarehouseService.ts (+ completeCalculation, порог 300 м)
+services/ReportService.ts    (generateSessionReport)
+services/index.ts
+repositories/index.ts        (- CuttingOrderRepository, + CuttingSessionRepository)
+storage/StorageKeys.ts       (- cuttingOrders, + cuttingSessions)
+core/di/container.ts
+viewmodels/{useCalculatorViewModel,useHistoryViewModel,useDashboardViewModel,index}.ts
+views/{CalculatorView,HistoryView,DashboardView,index}.tsx
+resources/strings.ts, App.tsx
+```
+
+Удалён `repositories/CuttingOrderRepository.ts` (история заменена на
+`CuttingSession`).
+
+### Диаграмма новых связей
+
+```
+Material 1 ──< Jumbo 1 ──< JumboOperation (receipt / usageStart / calculation …)
+                 │
+CuttingSession >─┘  (session.jumboId → Jumbo.id)
+  ├── order: OrderInfo (станок, заказчик, № заказа, оператор …)
+  ├── input: CuttingOrderInput   ├── result: CalcResult
+  ├── rolls: CuttingRoll[] (destination: order | warehouse)
+  ├── operationIds: [usageStart?, calculation]
+  └── wasteIds: []  (Этап 4)
+```
+
+### Архитектурные решения
+
+- **Repository-only мутации.** Все изменения проходят через репозитории;
+  производственная логика — в `WarehouseService.completeCalculation`, ViewModel
+  не пишет в хранилище напрямую.
+- **Инкрементальные накопители.** Показатели обновляются как дельты к полям
+  записи Джамба; полные пересчёты истории исключены (O(1) на операцию).
+- **Разделение потоков.** Свободный калькулятор и производственный расчёт
+  используют один и тот же `CalculationService`, но разные ViewModel/экраны
+  (SRP): математика едина, производственная обвязка изолирована.
+- **`CuttingSession` — единая сущность истории производства**, объединяющая
+  заказ, Джамб, рулоны, операции и (в будущем) брак.
+- **Кнопка «Добавить брак»** добавлена только как интерфейс (без логики) —
+  фундамент для Этапа 4.
+
+---
+
 ## Этап 2 — Модуль «Склад сырья (Джамбы)»
 
 > Платформа не изменилась: это то же веб-приложение (React + TypeScript + Vite).

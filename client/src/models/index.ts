@@ -9,6 +9,7 @@ export type { Jumbo } from "./Jumbo";
 export type { CuttingOrderInput } from "./CuttingOrder";
 export type { CuttingRoll } from "./CuttingRoll";
 export type { CuttingSession, OrderInfo } from "./CuttingSession";
+export { CuttingSessionStatus } from "./CuttingSession";
 export type { Waste } from "./Waste";
 export type { JumboOperation } from "./JumboOperation";
 export type { ArchivedJumbo, ArchivedJumboStatistics } from "./ArchivedJumbo";

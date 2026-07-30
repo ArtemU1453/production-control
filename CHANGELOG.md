@@ -87,6 +87,59 @@ CuttingSession >─┘  (session.jumboId → Jumbo.id)
   └── wasteIds: []  (Этап 4)
 ```
 
+### Транзакционная модель, откат и версионирование (доп. к Этапу 3)
+
+- **Атомарная транзакция.** `completeCalculation` выполняется как одна
+  транзакция с общим `transactionId`: при ошибке частичные записи
+  откатываются (снимок Джамба восстанавливается, созданные операции/сессия
+  удаляются), состояние остаётся согласованным.
+- **`rollbackTransaction(transactionId)`** в `WarehouseService`: восстанавливает
+  остаток, уменьшает `usedLength / usefulArea / ordersCount / rollsCount`,
+  пересчитывает `efficiency`, помечает операции `isReverted = true`, а сессию —
+  `status = reverted`. **Записи не удаляются** — история неизменяема. UI отката
+  на этом этапе не создаётся (по требованию).
+- **Версионирование.** `CuttingSession.version` (всегда 1) + `transactionId`,
+  `status`, `createdAt`, `updatedAt`; архитектура готова к будущим версиям
+  заказа и хранению предыдущих версий.
+- **Расширен `JumboOperation`:** `transactionId`, `sessionId`, `createdAt`,
+  `updatedAt`, `isReverted` (+ производственный контекст из основной части).
+- **Проверка сценариев.** Прогонян отдельный harness (in-memory store):
+  новый заказ, повторный заказ, первый запуск, `< 300 м → «Подлежит списанию»`,
+  недостаточный остаток, создание сессии/журнала, откат с восстановлением
+  накопителей и неизменяемой историей — 32/32 проверки пройдены. Harness не
+  коммитится.
+
+### ER-диаграмма новых сущностей
+
+```
+CuttingSession { id, transactionId, version, status, createdAt, updatedAt,
+                 order: OrderInfo, jumboId, materialCode,
+                 input, result, rolls[], operationIds[], wasteIds[] }
+   │ 1                         │ transactionId (общий)
+   │                           ▼
+   └──< CuttingRoll        JumboOperation { id, transactionId, sessionId, type,
+        { destination:                       usedLengthDeltaM, usefulAreaDeltaM2,
+          order|warehouse }                  remainderAfterM, isReverted, … }
+                                             │ jumboId
+Material 1 ──< Jumbo 1 ──────────────────────┘
+   (Jumbo: currentRemainderM, usedLength, usefulArea, ordersCount,
+    rollsCount, efficiency — накопительно)
+```
+
+### Поток Repository → Service → ViewModel → View
+
+```
+View (ProductionView)
+  → ViewModel (useProductionViewModel)  — состояние формы, live-план, валидация
+    → Service (WarehouseService.completeCalculation / rollbackTransaction,
+               CalculationService.calculate)
+      → Repository (Jumbo / JumboOperation / CuttingSession)
+        → Storage (KeyValueStore)
+```
+
+ViewModel никогда не обращается к хранилищу напрямую — только через сервисы и
+репозитории.
+
 ### Архитектурные решения
 
 - **Repository-only мутации.** Все изменения проходят через репозитории;

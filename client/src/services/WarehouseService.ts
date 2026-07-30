@@ -1,5 +1,6 @@
 import {
   CuttingRollKind,
+  CuttingSessionStatus,
   JumboOperationType,
   JumboStatus,
   RollDestination,
@@ -50,6 +51,8 @@ export interface CompleteCalculationParams {
 export interface CompleteCalculationOutcome {
   jumbo: Jumbo;
   session: CuttingSession;
+  /** Identifier of the atomic transaction; can be passed to `rollbackTransaction`. */
+  transactionId: string;
   /** The Jumbo was used for the first time by this calculation. */
   firstUse: boolean;
   /** The Jumbo crossed the low-remainder threshold and was marked for write-off. */
@@ -62,8 +65,9 @@ export interface CompleteCalculationOutcome {
  *
  * Every mutation records a {@link JumboOperation} automatically, and the Jumbo's
  * accumulative fields are written to the record — never recomputed from history.
- * `completeCalculation` is the production integration point: it applies a plan's
- * effects to the chosen Jumbo incrementally and creates the {@link CuttingSession}.
+ * `completeCalculation` runs as one atomic transaction (partial writes are
+ * undone on error); `rollbackTransaction` reverses a committed transaction while
+ * keeping the journal immutable.
  */
 export interface WarehouseService {
   receiveBatch(batch: ReceiptBatch): Promise<Jumbo[]>;
@@ -75,6 +79,9 @@ export interface WarehouseService {
   completeCalculation(
     params: CompleteCalculationParams,
   ): Promise<CompleteCalculationOutcome | undefined>;
+  /** Reverses a committed transaction: restores the Jumbo accumulators and marks
+   *  the operations and session as reverted without deleting any records. */
+  rollbackTransaction(transactionId: string): Promise<boolean>;
   operationsFor(jumboId: string): Promise<JumboOperation[]>;
 }
 
@@ -132,12 +139,18 @@ export function createWarehouseService(
   sessions: CuttingSessionRepository,
 ): WarehouseService {
   async function saveOperation(
-    operation: Omit<JumboOperation, "id" | "timestamp"> & Partial<Pick<JumboOperation, "timestamp">>,
+    operation: Omit<JumboOperation, "id" | "timestamp" | "createdAt" | "updatedAt" | "isReverted"> & {
+      timestamp?: string;
+    },
   ): Promise<JumboOperation> {
+    const now = nowIso();
     const saved: JumboOperation = {
       ...operation,
       id: makeId(),
-      timestamp: operation.timestamp ?? nowIso(),
+      timestamp: operation.timestamp ?? now,
+      createdAt: now,
+      updatedAt: now,
+      isReverted: false,
     };
     await operations.save(saved);
     return saved;
@@ -210,77 +223,153 @@ export function createWarehouseService(
 
       const { order, input, result } = params;
       const timestamp = nowIso();
-      const operationIds: string[] = [];
-
-      const firstUse = jumbo.status === JumboStatus.onStock;
-      const usageStartDate = jumbo.usageStartDate ?? (firstUse ? timestamp : undefined);
-      if (firstUse) {
-        const startOp = await saveOperation({
-          jumboId: jumbo.id,
-          type: JumboOperationType.usageStart,
-          operator: order.operator,
-          timestamp,
-        });
-        operationIds.push(startOp.id);
-      }
-
-      const remainderAfterM = Math.max(0, result.remaining_jumbo_m);
-      const consumed = Math.max(0, jumbo.currentRemainderM - remainderAfterM);
-      const usedLength = jumbo.usedLength + consumed;
-      const usefulArea = jumbo.usefulArea + result.useful_area_m2;
-      const rollsCount = jumbo.rollsCount + result.total_rolls;
-      const ordersCount = jumbo.ordersCount + 1;
-      const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
-
-      const becameWriteOff = remainderAfterM < LOW_REMAINDER_THRESHOLD_M;
-      const status = becameWriteOff ? JumboStatus.toWriteOff : JumboStatus.inWork;
-
+      const transactionId = makeId();
       const sessionId = makeId();
 
-      const calcOp = await saveOperation({
-        jumboId: jumbo.id,
-        type: JumboOperationType.calculation,
-        timestamp,
-        operator: order.operator,
-        machine: order.machine,
-        customer: order.customer,
-        orderNumber: order.orderNumber,
-        usedLengthDeltaM: consumed,
-        usefulAreaDeltaM2: result.useful_area_m2,
-        rollsCount: result.total_rolls,
-        remainderAfterM,
-      });
-      operationIds.push(calcOp.id);
+      // Snapshot for rollback if any write in the transaction fails.
+      const snapshot: Jumbo = { ...jumbo };
+      const createdOperationIds: string[] = [];
+      let sessionPersisted = false;
 
-      const updatedJumbo: Jumbo = {
-        ...jumbo,
-        currentRemainderM: remainderAfterM,
-        usedLength,
-        usefulArea,
-        rollsCount,
-        ordersCount,
-        efficiency,
-        status,
-        usageStartDate,
-      };
-      await jumbos.save(updatedJumbo);
+      try {
+        const firstUse = jumbo.status === JumboStatus.onStock;
+        const usageStartDate = jumbo.usageStartDate ?? (firstUse ? timestamp : undefined);
+        const operationIds: string[] = [];
 
-      const session: CuttingSession = {
-        id: sessionId,
-        createdAt: timestamp,
-        order,
-        jumboId: jumbo.id,
-        jumboStockNumber: jumbo.stockNumber,
-        materialCode: jumbo.materialCode,
-        input,
-        result,
-        rolls: buildRolls(sessionId, result, params.additionalDestination),
-        operationIds,
-        wasteIds: [],
-      };
-      await sessions.save(session);
+        if (firstUse) {
+          const startOp = await saveOperation({
+            jumboId: jumbo.id,
+            type: JumboOperationType.usageStart,
+            timestamp,
+            transactionId,
+            sessionId,
+            operator: order.operator,
+          });
+          createdOperationIds.push(startOp.id);
+          operationIds.push(startOp.id);
+        }
 
-      return { jumbo: updatedJumbo, session, firstUse, becameWriteOff, remainderAfterM };
+        const remainderAfterM = Math.max(0, result.remaining_jumbo_m);
+        const consumed = Math.max(0, jumbo.currentRemainderM - remainderAfterM);
+        const usedLength = jumbo.usedLength + consumed;
+        const usefulArea = jumbo.usefulArea + result.useful_area_m2;
+        const rollsCount = jumbo.rollsCount + result.total_rolls;
+        const ordersCount = jumbo.ordersCount + 1;
+        const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
+        const becameWriteOff = remainderAfterM < LOW_REMAINDER_THRESHOLD_M;
+        const status = becameWriteOff ? JumboStatus.toWriteOff : JumboStatus.inWork;
+
+        const calcOp = await saveOperation({
+          jumboId: jumbo.id,
+          type: JumboOperationType.calculation,
+          timestamp,
+          transactionId,
+          sessionId,
+          operator: order.operator,
+          machine: order.machine,
+          customer: order.customer,
+          orderNumber: order.orderNumber,
+          usedLengthDeltaM: consumed,
+          usefulAreaDeltaM2: result.useful_area_m2,
+          rollsCount: result.total_rolls,
+          remainderAfterM,
+        });
+        createdOperationIds.push(calcOp.id);
+        operationIds.push(calcOp.id);
+
+        const updatedJumbo: Jumbo = {
+          ...jumbo,
+          currentRemainderM: remainderAfterM,
+          usedLength,
+          usefulArea,
+          rollsCount,
+          ordersCount,
+          efficiency,
+          status,
+          usageStartDate,
+        };
+        await jumbos.save(updatedJumbo);
+
+        const session: CuttingSession = {
+          id: sessionId,
+          transactionId,
+          version: 1,
+          status: CuttingSessionStatus.active,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          order,
+          jumboId: jumbo.id,
+          jumboStockNumber: jumbo.stockNumber,
+          materialCode: jumbo.materialCode,
+          input,
+          result,
+          rolls: buildRolls(sessionId, result, params.additionalDestination),
+          operationIds,
+          wasteIds: [],
+          comment: order.comment,
+        };
+        await sessions.save(session);
+        sessionPersisted = true;
+
+        return { jumbo: updatedJumbo, session, transactionId, firstUse, becameWriteOff, remainderAfterM };
+      } catch (error) {
+        // Undo partial writes so the store stays consistent.
+        await jumbos.save(snapshot);
+        for (const id of createdOperationIds) {
+          await operations.delete(id);
+        }
+        if (sessionPersisted) {
+          await sessions.delete(sessionId);
+        }
+        throw error;
+      }
+    },
+
+    async rollbackTransaction(transactionId) {
+      const txnOperations = (await operations.getAll()).filter(
+        (operation) => operation.transactionId === transactionId && !operation.isReverted,
+      );
+      const calcOp = txnOperations.find(
+        (operation) => operation.type === JumboOperationType.calculation,
+      );
+      if (!calcOp) {
+        return false;
+      }
+
+      const jumbo = await jumbos.getById(calcOp.jumboId);
+      if (jumbo) {
+        const consumed = calcOp.usedLengthDeltaM ?? 0;
+        const usedLength = Math.max(0, jumbo.usedLength - consumed);
+        const usefulArea = Math.max(0, jumbo.usefulArea - (calcOp.usefulAreaDeltaM2 ?? 0));
+        const rollsCount = Math.max(0, jumbo.rollsCount - (calcOp.rollsCount ?? 0));
+        const ordersCount = Math.max(0, jumbo.ordersCount - 1);
+        const currentRemainderM = jumbo.currentRemainderM + consumed;
+        const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
+        const status =
+          currentRemainderM < LOW_REMAINDER_THRESHOLD_M
+            ? JumboStatus.toWriteOff
+            : JumboStatus.inWork;
+        await jumbos.save({
+          ...jumbo,
+          usedLength,
+          usefulArea,
+          rollsCount,
+          ordersCount,
+          currentRemainderM,
+          efficiency,
+          status,
+        });
+      }
+
+      const now = nowIso();
+      for (const operation of txnOperations) {
+        await operations.save({ ...operation, isReverted: true, updatedAt: now });
+      }
+      const session = (await sessions.getAll()).find((s) => s.transactionId === transactionId);
+      if (session) {
+        await sessions.save({ ...session, status: CuttingSessionStatus.reverted, updatedAt: now });
+      }
+      return true;
     },
 
     async operationsFor(jumboId) {

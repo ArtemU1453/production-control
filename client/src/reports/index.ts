@@ -21,6 +21,7 @@ export {
 export type { ReportCenterService } from "./services/ReportCenterService";
 export type { ReportRepository } from "./repositories/ReportRepository";
 export type { ReportContext } from "./repositories/ReportContext";
+export { jumboLines, bucketLabel, type JumboLine } from "./builders/support";
 export {
   ExportFormat,
   type ExportProvider,

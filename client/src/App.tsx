@@ -23,6 +23,7 @@ import {
   DocumentsView,
 } from "@/documents/views";
 import { useDocumentScheduler } from "@/documents/viewmodels/useDocumentScheduler";
+import { AnalyticsCenterView } from "@/analytics/views";
 import NotFound from "@/pages/not-found";
 
 function isReportKind(value: string): value is ReportKind {
@@ -63,6 +64,8 @@ function AppRouter() {
             isReportKind(params.kind) ? <ReportPreviewView kind={params.kind} /> : <NotFound />
           }
         </Route>
+
+        <Route path="/analytics" component={AnalyticsCenterView} />
 
         <Route path="/documents" component={DocumentsView} />
         <Route path="/documents/new" component={DocumentComposeView} />

@@ -13,8 +13,9 @@ export interface TabDefinition {
 export const tabs: readonly TabDefinition[] = [
   { key: "dashboard", path: "/", label: strings.tabs.dashboard, icon: "dashboard" },
   { key: "calculator", path: "/calculator", label: strings.tabs.calculator, icon: "calculator" },
-  { key: "history", path: "/history", label: strings.tabs.history, icon: "history" },
+  { key: "materials", path: "/materials", label: strings.tabs.materials, icon: "material" },
   { key: "warehouse", path: "/warehouse", label: strings.tabs.warehouse, icon: "warehouse" },
+  { key: "history", path: "/history", label: strings.tabs.history, icon: "history" },
   { key: "reports", path: "/reports", label: strings.tabs.reports, icon: "reports" },
   { key: "settings", path: "/settings", label: strings.tabs.settings, icon: "settings" },
 ];

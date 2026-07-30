@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
-import { JumboStatus, type CuttingOrder, type Jumbo } from "@/models";
+import { JumboStatus, type CuttingSession, type Jumbo } from "@/models";
 
 export interface JumboStatusCounts {
   total: number;
@@ -10,12 +10,20 @@ export interface JumboStatusCounts {
   archived: number;
 }
 
+export interface ProductionTotals {
+  ordersToday: number;
+  rollsMade: number;
+  materialUsedM: number;
+  usefulAreaM2: number;
+}
+
 interface DashboardViewModel {
   loading: boolean;
-  lastOrder: CuttingOrder | null;
-  ordersCount: number;
+  lastSession: CuttingSession | null;
+  sessionsCount: number;
   materialsCount: number;
   counts: JumboStatusCounts;
+  totals: ProductionTotals;
   reload: () => Promise<void>;
 }
 
@@ -46,38 +54,69 @@ function countByStatus(jumbos: Jumbo[]): JumboStatusCounts {
   return counts;
 }
 
-/** ViewModel for the dashboard. Reads the latest saved order and live warehouse
- *  counters straight from the repositories. */
+/**
+ * Aggregates production totals from the stored Jumbo accumulators (O(n) over
+ * Jumbos) — never by replaying the operation history — plus today's session
+ * count.
+ */
+function computeTotals(jumbos: Jumbo[], sessions: CuttingSession[]): ProductionTotals {
+  const today = new Date().toISOString().slice(0, 10);
+  let rollsMade = 0;
+  let materialUsedM = 0;
+  let usefulAreaM2 = 0;
+  for (const jumbo of jumbos) {
+    rollsMade += jumbo.rollsCount;
+    materialUsedM += jumbo.usedLength;
+    usefulAreaM2 += jumbo.usefulArea;
+  }
+  const ordersToday = sessions.filter((s) => s.createdAt.slice(0, 10) === today).length;
+  return {
+    ordersToday,
+    rollsMade,
+    materialUsedM: Math.round(materialUsedM),
+    usefulAreaM2: Math.round(usefulAreaM2 * 10) / 10,
+  };
+}
+
+/** ViewModel for the dashboard. Reads live warehouse counters, production
+ *  totals and the latest session straight from the repositories. */
 export function useDashboardViewModel(): DashboardViewModel {
-  const { cuttingOrders, jumbos, materials } = useServices();
+  const { cuttingSessions, jumbos, materials } = useServices();
   const [loading, setLoading] = useState(true);
-  const [lastOrder, setLastOrder] = useState<CuttingOrder | null>(null);
-  const [ordersCount, setOrdersCount] = useState(0);
-  const [materialsCount, setMaterialsCount] = useState(0);
+  const [sessionList, setSessionList] = useState<CuttingSession[]>([]);
   const [jumboList, setJumboList] = useState<Jumbo[]>([]);
+  const [materialsCount, setMaterialsCount] = useState(0);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [orders, jumbosData, materialsData] = await Promise.all([
-        cuttingOrders.getAll(),
+      const [sessions, jumbosData, materialsData] = await Promise.all([
+        cuttingSessions.getAll(),
         jumbos.getAll(),
         materials.getAll(),
       ]);
-      setOrdersCount(orders.length);
-      setLastOrder(orders[0] ?? null);
+      setSessionList(sessions);
       setJumboList(jumbosData);
       setMaterialsCount(materialsData.length);
     } finally {
       setLoading(false);
     }
-  }, [cuttingOrders, jumbos, materials]);
+  }, [cuttingSessions, jumbos, materials]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const counts = useMemo(() => countByStatus(jumboList), [jumboList]);
+  const totals = useMemo(() => computeTotals(jumboList, sessionList), [jumboList, sessionList]);
 
-  return { loading, lastOrder, ordersCount, materialsCount, counts, reload };
+  return {
+    loading,
+    lastSession: sessionList[0] ?? null,
+    sessionsCount: sessionList.length,
+    materialsCount,
+    counts,
+    totals,
+    reload,
+  };
 }

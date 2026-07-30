@@ -45,6 +45,10 @@ export interface Jumbo {
   scrapArea: number;
   /** Текущий коэффициент использования (0…1). */
   efficiency: number;
+  /** Количество выполненных заказов по этому Джамбу. */
+  ordersCount: number;
+  /** Количество изготовленных рулонов из этого Джамба. */
+  rollsCount: number;
 
   /** Комментарий — free-form note. */
   comment?: string;

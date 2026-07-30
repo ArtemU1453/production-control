@@ -50,8 +50,28 @@ export interface JumboOperation {
   comment?: string;
   operator?: string;
 
+  /** Groups operations of the same atomic run; used by rollback. */
+  transactionId?: string;
+  /** The CuttingSession this operation belongs to. */
+  sessionId?: string;
+
   usedLengthDeltaM?: number;
   usefulAreaDeltaM2?: number;
   wasteAreaDeltaM2?: number;
   scrapAreaDeltaM2?: number;
+
+  /** Production context, recorded for a `calculation` operation. */
+  machine?: string;
+  customer?: string;
+  orderNumber?: string;
+  /** Jumbo remainder after this operation, in metres. */
+  remainderAfterM?: number;
+  /** Rolls produced by this operation. */
+  rollsCount?: number;
+
+  createdAt?: string;
+  updatedAt?: string;
+  /** Set when the operation's transaction has been rolled back. The record is
+   *  never deleted — history stays immutable. */
+  isReverted?: boolean;
 }

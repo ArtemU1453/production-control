@@ -1,6 +1,6 @@
 /** Namespaced keys under which the storage layer persists collections. */
 export const storageKeys = {
-  cuttingOrders: "narezka.store.cuttingOrders",
+  cuttingSessions: "narezka.store.cuttingSessions",
   materials: "narezka.store.materials",
   jumbos: "narezka.store.jumbos",
   jumboOperations: "narezka.store.jumboOperations",

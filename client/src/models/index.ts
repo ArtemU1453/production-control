@@ -6,8 +6,10 @@
 export type { Material } from "./Material";
 export { MATERIAL_CODE_LENGTH } from "./Material";
 export type { Jumbo } from "./Jumbo";
-export type { CuttingOrder, CuttingOrderInput } from "./CuttingOrder";
+export type { CuttingOrderInput } from "./CuttingOrder";
 export type { CuttingRoll } from "./CuttingRoll";
+export type { CuttingSession, OrderInfo } from "./CuttingSession";
+export { CuttingSessionStatus } from "./CuttingSession";
 export type { Waste } from "./Waste";
 export type { JumboOperation } from "./JumboOperation";
 export type { ArchivedJumbo, ArchivedJumboStatistics } from "./ArchivedJumbo";
@@ -26,7 +28,8 @@ export {
   materialStatusTitle,
   materialStatusOrder,
 } from "./MaterialStatus";
-export { CuttingRollKind } from "./CuttingRoll";
+export { Machine, machineTitle, machineOrder } from "./Machine";
+export { CuttingRollKind, RollDestination } from "./CuttingRoll";
 export { WasteKind } from "./Waste";
 export { JumboOperationType, jumboOperationTitle } from "./JumboOperation";
 export { ReportType, ReportFormat, ReportStatus } from "./Report";

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/core/theme/ThemeManager";
 import { icons, type IconName } from "@/resources/icons";
 import { strings } from "@/resources/strings";
+import { formatArea, formatMeters } from "@/extensions/number";
 import { formatDateTime } from "@/extensions/date";
 import { useDashboardViewModel } from "@/viewmodels";
 
@@ -69,10 +70,11 @@ function DashboardCard({ title, subtitle, icon, href, badge, tone = "primary" }:
   );
 }
 
-/** The home dashboard: latest calculation, live warehouse counters from the
- *  repositories, and quick-access cards for every section. */
+/** The home dashboard: live warehouse counters and production totals from the
+ *  repositories, the latest session, and quick-access cards for every section. */
 export function DashboardView() {
-  const { loading, lastOrder, ordersCount, materialsCount, counts } = useDashboardViewModel();
+  const { loading, lastSession, sessionsCount, materialsCount, counts, totals } =
+    useDashboardViewModel();
   const { isDark, toggle } = useTheme();
 
   return (
@@ -110,68 +112,61 @@ export function DashboardView() {
           )}
         </CardView>
 
+        <CardView title="Производство" icon={icons.gauge} headerTone="accent" animate>
+          {loading ? (
+            <LoadingView />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard label="Заказов сегодня" value={totals.ordersToday} />
+              <MetricCard label="Изготовлено рулонов" value={totals.rollsMade} />
+              <MetricCard label="Использовано материала" value={formatMeters(totals.materialUsedM)} />
+              <MetricCard label="Полезная площадь" value={formatArea(totals.usefulAreaM2)} />
+            </div>
+          )}
+        </CardView>
+
         <CardView
-          title="Последний расчёт"
+          title="Последний заказ"
           icon={icons.clock}
           animate
           headerTrailing={
-            lastOrder ? (
+            lastSession ? (
               <StatusBadge
-                label={`Отход: ${lastOrder.result.waste_percent.toFixed(1)}%`}
-                tone={lastOrder.result.waste_percent > 7 ? "danger" : "neutral"}
+                label={`Отход: ${lastSession.result.waste_percent.toFixed(1)}%`}
+                tone={lastSession.result.waste_percent > 7 ? "danger" : "neutral"}
               />
             ) : undefined
           }
         >
           {loading ? (
             <LoadingView />
-          ) : lastOrder ? (
+          ) : lastSession ? (
             <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">{formatDateTime(lastOrder.createdAt)}</div>
+              <div className="text-xs text-muted-foreground">{formatDateTime(lastSession.createdAt)}</div>
               <div className="text-lg font-semibold">
-                {lastOrder.input.rollWidthMm} × {lastOrder.input.rollLengthM} м
+                {lastSession.order.orderNumber || "Без номера"}
+                {lastSession.order.customer ? ` · ${lastSession.order.customer}` : ""}
               </div>
               <div className="text-sm text-muted-foreground">
-                Заказ: {lastOrder.input.orderRolls} шт · Ручьёв: {lastOrder.result.main_count} · Циклов:{" "}
-                {lastOrder.result.cycles_used}
+                Джамб № {lastSession.jumboStockNumber} · Рулонов: {lastSession.result.total_rolls} ·
+                Циклов: {lastSession.result.cycles_used}
               </div>
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              Ещё нет расчётов. Откройте «Расчёт» и сохраните первый результат.
+              Ещё нет заказов. Откройте «Производство» и выполните первый расчёт.
             </div>
           )}
         </CardView>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <DashboardCard title="Быстрый расчёт" subtitle="Новый раскрой Джамба" icon="quick" href="/calculator" />
-          <DashboardCard
-            title="Материалы"
-            subtitle={`Материалов: ${materialsCount}`}
-            icon="material"
-            href="/materials"
-            tone="accent"
-          />
-          <DashboardCard
-            title="Склад"
-            subtitle={`Всего Джамбов: ${counts.total}`}
-            icon="warehouse"
-            href="/warehouse"
-          />
-          <DashboardCard
-            title="История"
-            subtitle={`Сохранённых расчётов: ${ordersCount}`}
-            icon="history"
-            href="/history"
-            tone="accent"
-          />
-          <DashboardCard
-            title="Архив"
-            subtitle={`В архиве: ${counts.archived}`}
-            icon="archive"
-            href="/archive"
-          />
-          <DashboardCard title="Отчёты" subtitle="PDF и рассылка" icon="reports" href="/reports" badge="Скоро" tone="accent" />
+          <DashboardCard title="Производство" subtitle="Новый заказ по Джамбу" icon="gauge" href="/production" />
+          <DashboardCard title="Быстрый расчёт" subtitle="Свободный калькулятор" icon="quick" href="/calculator" tone="accent" />
+          <DashboardCard title="Материалы" subtitle={`Материалов: ${materialsCount}`} icon="material" href="/materials" />
+          <DashboardCard title="Склад" subtitle={`Всего Джамбов: ${counts.total}`} icon="warehouse" href="/warehouse" tone="accent" />
+          <DashboardCard title="История" subtitle={`Заказов: ${sessionsCount}`} icon="history" href="/history" />
+          <DashboardCard title="Архив" subtitle={`В архиве: ${counts.archived}`} icon="archive" href="/archive" tone="accent" />
+          <DashboardCard title="Отчёты" subtitle="PDF и рассылка" icon="reports" href="/reports" badge="Скоро" />
           <DashboardCard title="Настройки" subtitle="Профиль и оформление" icon="settings" href="/settings" />
         </div>
       </div>

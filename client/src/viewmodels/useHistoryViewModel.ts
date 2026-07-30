@@ -1,48 +1,51 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
-import type { CuttingOrder } from "@/models";
+import type { CuttingSession } from "@/models";
 
 interface HistoryViewModel {
   loading: boolean;
   query: string;
   setQuery: (query: string) => void;
-  orders: CuttingOrder[];
+  sessions: CuttingSession[];
   remove: (id: string) => Promise<void>;
   clearAll: () => Promise<void>;
 }
 
-function matches(order: CuttingOrder, query: string): boolean {
-  if (!query.trim()) {
+function matches(session: CuttingSession, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) {
     return true;
   }
-  const haystack = [
-    order.operator ?? "",
-    order.note ?? "",
-    String(order.input.rollWidthMm),
-    String(order.input.rollLengthM),
-    String(order.input.orderRolls),
+  return [
+    session.order.customer,
+    session.order.orderNumber,
+    session.order.operator,
+    session.jumboStockNumber,
+    session.materialCode,
   ]
     .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.trim().toLowerCase());
+    .toLowerCase()
+    .includes(q);
 }
 
-/** ViewModel for the history screen: loads saved orders and supports search and
- *  deletion. */
+/**
+ * ViewModel for the production history screen. Lists {@link CuttingSession}
+ * records — the main production-history entity — with search and deletion.
+ */
 export function useHistoryViewModel(): HistoryViewModel {
-  const { cuttingOrders } = useServices();
+  const { cuttingSessions } = useServices();
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [orders, setOrders] = useState<CuttingOrder[]>([]);
+  const [all, setAll] = useState<CuttingSession[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setOrders(await cuttingOrders.getAll());
+      setAll(await cuttingSessions.getAll());
     } finally {
       setLoading(false);
     }
-  }, [cuttingOrders]);
+  }, [cuttingSessions]);
 
   useEffect(() => {
     void load();
@@ -50,21 +53,21 @@ export function useHistoryViewModel(): HistoryViewModel {
 
   const remove = useCallback(
     async (id: string) => {
-      await cuttingOrders.delete(id);
+      await cuttingSessions.delete(id);
       await load();
     },
-    [cuttingOrders, load],
+    [cuttingSessions, load],
   );
 
   const clearAll = useCallback(async () => {
-    await cuttingOrders.clear();
+    await cuttingSessions.clear();
     await load();
-  }, [cuttingOrders, load]);
+  }, [cuttingSessions, load]);
 
-  const filtered = useMemo(
-    () => orders.filter((order) => matches(order, query)),
-    [orders, query],
+  const sessions = useMemo(
+    () => all.filter((session) => matches(session, query)),
+    [all, query],
   );
 
-  return { loading, query, setQuery, orders: filtered, remove, clearAll };
+  return { loading, query, setQuery, sessions, remove, clearAll };
 }

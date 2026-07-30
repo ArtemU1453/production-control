@@ -9,6 +9,7 @@ import {
   JumboDetailView,
   MaterialEditorView,
   MaterialsView,
+  ProductionView,
   ReceiptView,
   ReportsView,
   SettingsView,
@@ -23,6 +24,7 @@ function AppRouter() {
     <>
       <Switch>
         <Route path="/" component={DashboardView} />
+        <Route path="/production" component={ProductionView} />
         <Route path="/calculator" component={CalculatorView} />
         <Route path="/history" component={HistoryView} />
 

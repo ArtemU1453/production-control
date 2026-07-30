@@ -2,6 +2,7 @@ import { Route, Switch } from "wouter";
 import { AppProviders } from "@/app/providers/AppProviders";
 import { TabBar } from "@/components";
 import {
+  ArchiveDetailView,
   ArchiveView,
   CalculatorView,
   DashboardView,
@@ -40,6 +41,9 @@ function AppRouter() {
           {(params) => <JumboDetailView jumboId={params.id} />}
         </Route>
         <Route path="/archive" component={ArchiveView} />
+        <Route path="/archive/:id">
+          {(params) => <ArchiveDetailView archiveId={params.id} />}
+        </Route>
 
         <Route path="/reports" component={ReportsView} />
         <Route path="/settings" component={SettingsView} />

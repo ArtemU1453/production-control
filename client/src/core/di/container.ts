@@ -7,20 +7,26 @@ import {
   createJumboRepository,
   createMaterialRepository,
   createSettingsRepository,
+  createWasteRepository,
   type ArchivedJumboRepository,
   type CuttingSessionRepository,
   type JumboOperationRepository,
   type JumboRepository,
   type MaterialRepository,
   type SettingsRepository,
+  type WasteRepository,
 } from "../../repositories";
 import {
   createCalculationService,
+  createEmailQueue,
   createEmailService,
+  createReportBuilder,
   createReportService,
   createWarehouseService,
   type CalculationService,
+  type EmailQueue,
   type EmailService,
+  type ReportBuilder,
   type ReportService,
   type WarehouseService,
 } from "../../services";
@@ -39,11 +45,14 @@ export interface AppContainer {
   materials: MaterialRepository;
   jumbos: JumboRepository;
   jumboOperations: JumboOperationRepository;
+  wastes: WasteRepository;
   archivedJumbos: ArchivedJumboRepository;
   settings: SettingsRepository;
   calculation: CalculationService;
   reports: ReportService;
+  reportBuilder: ReportBuilder;
   email: EmailService;
+  emailQueue: EmailQueue;
   warehouse: WarehouseService;
 }
 
@@ -53,17 +62,28 @@ export function createAppContainer(
   const jumbos = createJumboRepository(store);
   const jumboOperations = createJumboOperationRepository(store);
   const cuttingSessions = createCuttingSessionRepository(store);
+  const wastes = createWasteRepository(store);
+  const archivedJumbos = createArchivedJumboRepository(store);
   return {
     store,
     cuttingSessions,
     materials: createMaterialRepository(store),
     jumbos,
     jumboOperations,
-    archivedJumbos: createArchivedJumboRepository(store),
+    wastes,
+    archivedJumbos,
     settings: createSettingsRepository(store),
     calculation: createCalculationService(),
     reports: createReportService(),
+    reportBuilder: createReportBuilder(),
     email: createEmailService(),
-    warehouse: createWarehouseService(jumbos, jumboOperations, cuttingSessions),
+    emailQueue: createEmailQueue(store),
+    warehouse: createWarehouseService(
+      jumbos,
+      jumboOperations,
+      cuttingSessions,
+      wastes,
+      archivedJumbos,
+    ),
   };
 }

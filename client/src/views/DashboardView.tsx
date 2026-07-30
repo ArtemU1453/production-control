@@ -73,7 +73,7 @@ function DashboardCard({ title, subtitle, icon, href, badge, tone = "primary" }:
 /** The home dashboard: live warehouse counters and production totals from the
  *  repositories, the latest session, and quick-access cards for every section. */
 export function DashboardView() {
-  const { loading, lastSession, sessionsCount, materialsCount, counts, totals } =
+  const { loading, lastSession, sessionsCount, materialsCount, counts, totals, archiveTotals } =
     useDashboardViewModel();
   const { isDark, toggle } = useTheme();
 
@@ -121,6 +121,24 @@ export function DashboardView() {
               <MetricCard label="Изготовлено рулонов" value={totals.rollsMade} />
               <MetricCard label="Использовано материала" value={formatMeters(totals.materialUsedM)} />
               <MetricCard label="Полезная площадь" value={formatArea(totals.usefulAreaM2)} />
+            </div>
+          )}
+        </CardView>
+
+        <CardView
+          title="Архив"
+          icon={icons.archive}
+          animate
+          headerTrailing={<StatusBadge label={`Архивировано: ${archiveTotals.archivedCount}`} tone="muted" />}
+        >
+          {loading ? (
+            <LoadingView />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard label="Использовано материала" value={formatMeters(totals.materialUsedM)} />
+              <MetricCard label="Средний % использования" value={`${archiveTotals.avgUsefulPercent}%`} />
+              <MetricCard label="Средний % брака" value={`${archiveTotals.avgWastePercent}%`} />
+              <MetricCard label="Изготовлено рулонов" value={totals.rollsMade} />
             </div>
           )}
         </CardView>

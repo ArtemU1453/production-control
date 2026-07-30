@@ -1,33 +1,59 @@
+import type { CuttingSession } from "./CuttingSession";
 import type { Jumbo } from "./Jumbo";
 import type { JumboOperation } from "./JumboOperation";
+import type { Waste } from "./Waste";
 
-/** Frozen KPI snapshot captured at archive time. */
+/**
+ * Frozen final statistics captured once at archive time. These are computed and
+ * stored on close; the archive is never recalculated afterwards.
+ */
 export interface ArchivedJumboStatistics {
-  usedLength: number;
-  usefulArea: number;
-  wasteArea: number;
-  scrapArea: number;
-  efficiency: number;
+  /** Общая площадь Джамба, м² (начальная намотка × ширина). */
+  totalAreaM2: number;
+  /** Полезная площадь, м². */
+  usefulAreaM2: number;
+  /** Площадь брака, м². */
+  wasteAreaM2: number;
+  /** Площадь технологического остатка, м². */
+  scrapAreaM2: number;
+  /** Общие потери, м² (брак + технологический остаток). */
+  totalLossesM2: number;
+
+  /** Процент полезного использования. */
+  usefulPercent: number;
+  /** Процент брака. */
+  wastePercent: number;
+  /** Процент технологических потерь. */
+  scrapPercent: number;
+
+  usedLengthM: number;
+  initialWindingM: number;
+  finalRemainderM: number;
+  ordersCount: number;
+  rollsCount: number;
   operationsCount: number;
+  efficiency: number;
 }
 
 /**
  * A written-off Jumbo moved to the archive.
  *
  * It carries a full, self-contained snapshot so the archive never depends on
- * the live warehouse: the complete Jumbo record, its captured statistics and
- * its operation history. The migration that fills the archive is a later phase;
- * the structure is defined now so that step is purely additive.
+ * the live warehouse: the final Jumbo record, its captured statistics, the
+ * operation journal, the production sessions and the waste history. Everything
+ * is frozen at close time and never recomputed.
  */
 export interface ArchivedJumbo {
   id: string;
-  /** Full snapshot of the Jumbo at the moment of archiving. */
+  /** Final snapshot of the Jumbo at the moment of archiving. */
   jumbo: Jumbo;
-  /** Snapshot of the operation journal. */
   operations: JumboOperation[];
-  /** Captured KPI values. */
+  sessions: CuttingSession[];
+  wastes: Waste[];
   statistics: ArchivedJumboStatistics;
+  usageStartDate?: string;
+  usageEndDate?: string;
   archivedAt: string;
   archivedBy?: string;
-  reason?: string;
+  comment?: string;
 }

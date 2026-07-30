@@ -1,3 +1,5 @@
+import { Link } from "wouter";
+import { FileText } from "lucide-react";
 import {
   CardView,
   InfoRow,
@@ -7,6 +9,7 @@ import {
   SegmentedControl,
   type SegmentOption,
 } from "@/components";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -44,7 +47,16 @@ export function ReportPreviewView({ kind }: { kind: ReportKind }) {
   const report = vm.report;
 
   return (
-    <ScreenScaffold title={vm.title}>
+    <ScreenScaffold
+      title={vm.title}
+      toolbar={
+        <Link href="/documents/new">
+          <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Сформировать PDF">
+            <FileText className="h-4 w-4" />
+          </Button>
+        </Link>
+      }
+    >
       <div className="space-y-4">
         <CardView title="Фильтры" icon={icons.analytics} animate>
           <div className="space-y-4">

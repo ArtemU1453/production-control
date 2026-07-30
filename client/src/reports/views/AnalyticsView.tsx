@@ -1,9 +1,12 @@
+import { Link } from "wouter";
+import { FileText } from "lucide-react";
 import {
   EmptyState,
   ListRow,
   ScreenScaffold,
   SearchBar,
 } from "@/components";
+import { Button } from "@/components/ui/button";
 import { icons } from "@/resources/icons";
 import { strings } from "@/resources/strings";
 import { useAnalyticsViewModel } from "../viewmodels/useAnalyticsViewModel";
@@ -13,7 +16,17 @@ export function AnalyticsView() {
   const { query, setQuery, definitions } = useAnalyticsViewModel();
 
   return (
-    <ScreenScaffold title={strings.analytics.title} subtitle={strings.analytics.subtitle}>
+    <ScreenScaffold
+      title={strings.analytics.title}
+      subtitle={strings.analytics.subtitle}
+      toolbar={
+        <Link href="/documents">
+          <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Документы">
+            <FileText className="h-4 w-4" />
+          </Button>
+        </Link>
+      }
+    >
       <div className="space-y-4">
         <SearchBar value={query} onChange={setQuery} placeholder="Поиск отчёта" />
         {definitions.length === 0 ? (

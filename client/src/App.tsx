@@ -17,6 +17,12 @@ import {
 } from "@/views";
 import { AnalyticsView, ReportPreviewView } from "@/reports/views";
 import { allReportKinds, type ReportKind } from "@/reports";
+import {
+  DocumentComposeView,
+  DocumentPreviewView,
+  DocumentsView,
+} from "@/documents/views";
+import { useDocumentScheduler } from "@/documents/viewmodels/useDocumentScheduler";
 import NotFound from "@/pages/not-found";
 
 function isReportKind(value: string): value is ReportKind {
@@ -26,6 +32,7 @@ function isReportKind(value: string): value is ReportKind {
 /** Top-level route table. The tab bar is rendered outside the switch so it
  *  stays persistent across navigation, mirroring a native TabView. */
 function AppRouter() {
+  useDocumentScheduler();
   return (
     <>
       <Switch>
@@ -56,6 +63,13 @@ function AppRouter() {
             isReportKind(params.kind) ? <ReportPreviewView kind={params.kind} /> : <NotFound />
           }
         </Route>
+
+        <Route path="/documents" component={DocumentsView} />
+        <Route path="/documents/new" component={DocumentComposeView} />
+        <Route path="/documents/:id">
+          {(params) => <DocumentPreviewView documentId={params.id} />}
+        </Route>
+
         <Route path="/settings" component={SettingsView} />
         <Route component={NotFound} />
       </Switch>

@@ -3,6 +3,7 @@ export {
   useDashboardViewModel,
   type JumboStatusCounts,
   type ProductionTotals,
+  type ArchiveTotals,
 } from "./useDashboardViewModel";
 export { useHistoryViewModel } from "./useHistoryViewModel";
 export {
@@ -29,7 +30,14 @@ export {
 } from "./useMaterialEditorViewModel";
 export { useReceiptViewModel, type ReceiptItemDraft } from "./useReceiptViewModel";
 export { useJumboDetailViewModel, type JumboEdit } from "./useJumboDetailViewModel";
-export { useArchiveViewModel } from "./useArchiveViewModel";
+export {
+  useArchiveViewModel,
+  ARCHIVE_MONTHS,
+  type ArchiveMaterialFilter,
+  type ArchiveYearFilter,
+  type ArchiveMonthFilter,
+} from "./useArchiveViewModel";
+export { useArchiveDetailViewModel } from "./useArchiveDetailViewModel";
 export {
   calculatorSchema,
   calculatorDefaults,

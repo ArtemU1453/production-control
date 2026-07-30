@@ -7,7 +7,12 @@ import {
   type JumboOperation,
   type Material,
 } from "@/models";
-import { validateNonNegative } from "@/services";
+import {
+  summarizeForClose,
+  validateNonNegative,
+  type CloseJumboOutcome,
+  type JumboCloseSummary,
+} from "@/services";
 
 export interface JumboEdit {
   status: JumboStatus;
@@ -22,8 +27,14 @@ interface JumboDetailViewModel {
   operations: JumboOperation[];
   error: string | null;
   saving: boolean;
+  /** Read-only summary shown before closing; null until the Jumbo loads. */
+  closeSummary: JumboCloseSummary | null;
+  /** True while the Jumbo can still be closed (not already archived). */
+  canClose: boolean;
+  closing: boolean;
   startUsage: () => Promise<void>;
   saveEdit: (edit: JumboEdit) => Promise<boolean>;
+  close: (comment: string) => Promise<CloseJumboOutcome | undefined>;
 }
 
 /** ViewModel for the Jumbo detail card: full record, its material and the
@@ -36,6 +47,7 @@ export function useJumboDetailViewModel(jumboId: string): JumboDetailViewModel {
   const [operations, setOperations] = useState<JumboOperation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,5 +109,40 @@ export function useJumboDetailViewModel(jumboId: string): JumboDetailViewModel {
     [jumbo, warehouse, settings, load],
   );
 
-  return { loading, jumbo, material, operations, error, saving, startUsage, saveEdit };
+  const close = useCallback(
+    async (comment: string): Promise<CloseJumboOutcome | undefined> => {
+      if (!jumbo || jumbo.status === JumboStatus.archived) {
+        return undefined;
+      }
+      setClosing(true);
+      try {
+        const current = await settings.load();
+        const outcome = await warehouse.closeJumbo({
+          jumboId: jumbo.id,
+          operator: current.operator || undefined,
+          comment: comment.trim() || undefined,
+        });
+        await load();
+        return outcome;
+      } finally {
+        setClosing(false);
+      }
+    },
+    [jumbo, warehouse, settings, load],
+  );
+
+  return {
+    loading,
+    jumbo,
+    material,
+    operations,
+    error,
+    saving,
+    closeSummary: jumbo ? summarizeForClose(jumbo) : null,
+    canClose: jumbo !== null && jumbo.status !== JumboStatus.archived,
+    closing,
+    startUsage,
+    saveEdit,
+    close,
+  };
 }

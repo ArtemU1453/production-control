@@ -17,6 +17,7 @@ export {
   createArchivedJumboRepository,
   type ArchivedJumboRepository,
 } from "./ArchivedJumboRepository";
+export { createWasteRepository, type WasteRepository } from "./WasteRepository";
 export {
   createSettingsRepository,
   type SettingsRepository,

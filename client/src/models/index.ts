@@ -30,7 +30,7 @@ export {
 } from "./MaterialStatus";
 export { Machine, machineTitle, machineOrder } from "./Machine";
 export { CuttingRollKind, RollDestination } from "./CuttingRoll";
-export { WasteKind } from "./Waste";
+export { WasteKind, wasteKindTitle } from "./Waste";
 export { JumboOperationType, jumboOperationTitle } from "./JumboOperation";
 export { ReportType, ReportFormat, ReportStatus } from "./Report";
 export { defaultSettings } from "./Settings";

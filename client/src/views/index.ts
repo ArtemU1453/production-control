@@ -10,3 +10,4 @@ export { MaterialEditorView } from "./MaterialEditorView";
 export { ReceiptView } from "./ReceiptView";
 export { JumboDetailView } from "./JumboDetailView";
 export { ArchiveView } from "./ArchiveView";
+export { ArchiveDetailView } from "./ArchiveDetailView";

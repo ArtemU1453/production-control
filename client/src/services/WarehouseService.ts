@@ -4,17 +4,23 @@ import {
   JumboOperationType,
   JumboStatus,
   RollDestination,
+  WasteKind,
+  type ArchivedJumbo,
+  type ArchivedJumboStatistics,
   type CuttingOrderInput,
   type CuttingRoll,
   type CuttingSession,
   type Jumbo,
   type JumboOperation,
   type OrderInfo,
+  type Waste,
 } from "../models";
 import type {
+  ArchivedJumboRepository,
   CuttingSessionRepository,
   JumboOperationRepository,
   JumboRepository,
+  WasteRepository,
 } from "../repositories";
 import type { CalcResult } from "../core/calculator/calculatorLogic";
 import { nowIso } from "../extensions/date";
@@ -60,6 +66,42 @@ export interface CompleteCalculationOutcome {
   remainderAfterM: number;
 }
 
+export interface CloseJumboParams {
+  jumboId: string;
+  operator?: string;
+  comment?: string;
+}
+
+export interface CloseJumboOutcome {
+  archived: ArchivedJumbo;
+  waste: Waste;
+}
+
+/** Read-only summary shown before closing a Jumbo. */
+export interface JumboCloseSummary {
+  stockNumber: string;
+  materialCode: string;
+  initialWindingM: number;
+  currentRemainderM: number;
+  usedLength: number;
+  usefulArea: number;
+  ordersCount: number;
+  rollsCount: number;
+}
+
+export function summarizeForClose(jumbo: Jumbo): JumboCloseSummary {
+  return {
+    stockNumber: jumbo.stockNumber,
+    materialCode: jumbo.materialCode,
+    initialWindingM: jumbo.initialWindingM,
+    currentRemainderM: jumbo.currentRemainderM,
+    usedLength: jumbo.usedLength,
+    usefulArea: jumbo.usefulArea,
+    ordersCount: jumbo.ordersCount,
+    rollsCount: jumbo.rollsCount,
+  };
+}
+
 /**
  * Coordinates warehouse write operations and their journal entries.
  *
@@ -82,7 +124,14 @@ export interface WarehouseService {
   /** Reverses a committed transaction: restores the Jumbo accumulators and marks
    *  the operations and session as reverted without deleting any records. */
   rollbackTransaction(transactionId: string): Promise<boolean>;
+  /** Closes a Jumbo: books the remainder as technological scrap, freezes final
+   *  statistics, records an Archive operation and creates the ArchivedJumbo. */
+  closeJumbo(params: CloseJumboParams): Promise<CloseJumboOutcome | undefined>;
   operationsFor(jumboId: string): Promise<JumboOperation[]>;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function zeroedAccumulators(): Pick<
@@ -137,6 +186,8 @@ export function createWarehouseService(
   jumbos: JumboRepository,
   operations: JumboOperationRepository,
   sessions: CuttingSessionRepository,
+  wastes: WasteRepository,
+  archived: ArchivedJumboRepository,
 ): WarehouseService {
   async function saveOperation(
     operation: Omit<JumboOperation, "id" | "timestamp" | "createdAt" | "updatedAt" | "isReverted"> & {
@@ -370,6 +421,126 @@ export function createWarehouseService(
         await sessions.save({ ...session, status: CuttingSessionStatus.reverted, updatedAt: now });
       }
       return true;
+    },
+
+    async closeJumbo({ jumboId, operator, comment }) {
+      const jumbo = await jumbos.getById(jumboId);
+      if (!jumbo || jumbo.status === JumboStatus.archived) {
+        return undefined;
+      }
+
+      const now = nowIso();
+      const widthM = jumbo.widthMm / 1000;
+      const remainderM = jumbo.currentRemainderM;
+
+      // The leftover metrage is booked as technological scrap.
+      const scrapRemainderAreaM2 = round1(remainderM * widthM);
+      const waste: Waste = {
+        id: makeId(),
+        kind: WasteKind.technological,
+        areaM2: scrapRemainderAreaM2,
+        widthMm: jumbo.widthMm,
+        lengthM: remainderM,
+        jumboId: jumbo.id,
+        operator,
+        comment,
+        createdAt: now,
+      };
+
+      // Final statistics, computed once and frozen in the archive.
+      const totalAreaM2 = round1(jumbo.initialWindingM * widthM);
+      const usefulAreaM2 = round1(jumbo.usefulArea);
+      const wasteAreaM2 = round1(jumbo.wasteArea);
+      const scrapAreaM2 = round1(jumbo.scrapArea + scrapRemainderAreaM2);
+      const totalLossesM2 = round1(wasteAreaM2 + scrapAreaM2);
+      const percent = (value: number) => (totalAreaM2 > 0 ? round1((value / totalAreaM2) * 100) : 0);
+
+      const closedJumbo: Jumbo = {
+        ...jumbo,
+        currentRemainderM: 0,
+        scrapArea: scrapAreaM2,
+        status: JumboStatus.archived,
+        usageEndDate: now,
+      };
+
+      const snapshot: Jumbo = { ...jumbo };
+      let wastePersisted = false;
+      let jumboPersisted = false;
+      const createdOperationIds: string[] = [];
+      let archivePersisted = false;
+
+      try {
+        await wastes.save(waste);
+        wastePersisted = true;
+
+        await jumbos.save(closedJumbo);
+        jumboPersisted = true;
+
+        const archiveOp = await saveOperation({
+          jumboId: jumbo.id,
+          type: JumboOperationType.archive,
+          timestamp: now,
+          operator,
+          comment: comment ?? "Архивирование",
+          remainderAfterM: 0,
+        });
+        createdOperationIds.push(archiveOp.id);
+
+        const jumboOperations = await operations.forJumbo(jumbo.id);
+        const jumboSessions = (await sessions.getAll()).filter((s) => s.jumboId === jumbo.id);
+        const jumboWastes = await wastes.forJumbo(jumbo.id);
+
+        const statistics: ArchivedJumboStatistics = {
+          totalAreaM2,
+          usefulAreaM2,
+          wasteAreaM2,
+          scrapAreaM2,
+          totalLossesM2,
+          usefulPercent: percent(usefulAreaM2),
+          wastePercent: percent(wasteAreaM2),
+          scrapPercent: percent(scrapAreaM2),
+          usedLengthM: round1(jumbo.usedLength),
+          initialWindingM: jumbo.initialWindingM,
+          finalRemainderM: 0,
+          ordersCount: jumbo.ordersCount,
+          rollsCount: jumbo.rollsCount,
+          operationsCount: jumboOperations.length,
+          efficiency: jumbo.efficiency,
+        };
+
+        const archivedJumbo: ArchivedJumbo = {
+          id: jumbo.id,
+          jumbo: closedJumbo,
+          operations: jumboOperations,
+          sessions: jumboSessions,
+          wastes: jumboWastes,
+          statistics,
+          usageStartDate: jumbo.usageStartDate,
+          usageEndDate: now,
+          archivedAt: now,
+          archivedBy: operator,
+          comment,
+        };
+        await archived.save(archivedJumbo);
+        archivePersisted = true;
+
+        return { archived: archivedJumbo, waste };
+      } catch (error) {
+        // Undo partial writes to keep the store consistent.
+        if (jumboPersisted) {
+          await jumbos.save(snapshot);
+        }
+        if (wastePersisted) {
+          await wastes.delete(waste.id);
+        }
+        for (const id of createdOperationIds) {
+          await operations.delete(id);
+        }
+        if (archivePersisted) {
+          await archived.delete(jumbo.id);
+        }
+        throw error;
+      }
     },
 
     async operationsFor(jumboId) {

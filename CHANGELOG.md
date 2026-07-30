@@ -1,5 +1,121 @@
 # CHANGELOG
 
+## Этап 4 — Полный жизненный цикл Джамба
+
+> Платформа та же (React + TS + Vite); «SwiftData» — слой репозиториев над
+> `KeyValueStore`. **Алгоритм расчёта нарезки не изменён** (движок идентичен
+> `main`).
+
+### Главное
+
+Реализован полный жизненный цикл Джамба: поступление → в работе → подлежит
+списанию → **закрытие** → архив. При закрытии остаток списывается как
+технологический остаток, итоговые показатели вычисляются **один раз** и
+замораживаются в архиве.
+
+### Жизненный цикл и закрытие Джамба
+
+1. **Действие «Закрыть Джамб»** на карточке Джамба со сводкой перед закрытием
+   (номер, материал, начальная намотка, остаток, использовано, полезная
+   площадь, количество заказов, количество рулонов).
+2. **Технологический остаток.** Остаток автоматически становится записью
+   `Waste` типа «Технологический остаток» (метры, м², дата, оператор,
+   комментарий).
+3. **Итоговые показатели** (замораживаются в архиве, больше не меняются):
+   общая площадь, полезная площадь, площадь брака, площадь тех. остатка,
+   общие потери, % полезного использования, % брака, % тех. потерь + метраж,
+   заказы, рулоны, операции, коэффициент.
+4. **Архивирование.** Статус → «Архив», операция журнала `Archive`, создаётся
+   `ArchivedJumbo` — самодостаточный снимок: финальный Джамб, история операций,
+   история заказов (`CuttingSession[]`), история потерь (`Waste[]`), итоговая
+   статистика. Всё выполняется как одна транзакция (откат частичных записей при
+   ошибке).
+
+### Архив
+
+- **Карточка архива**: номер, материал, период использования, начальная
+  намотка, остаток, использовано, полезная площадь, брак, технологический
+  остаток, общие потери, процент использования, заказы, потери, журнал операций.
+- **Поиск** по номеру, материалу, оператору, периоду.
+- **Фильтры** по материалу, году и месяцу.
+
+### Dashboard
+
+Добавлены показатели: архивировано Джамбов, использовано материала, средний
+процент использования, средний процент брака (из замороженной статистики
+архива).
+
+### Подготовка PDF и E-mail
+
+- **`ReportBuilder`** — структура данных отчёта по архивному Джамбу (секции и
+  строки), без генерации PDF; значения берутся из замороженной статистики.
+- **`EmailQueue`** — персистентная очередь писем (`enqueue` / `pending`), без
+  отправки; фундамент для авторассылки.
+
+### Новые файлы
+
+```
+models/… (расширения)
+repositories/WasteRepository.ts
+services/ReportBuilder.ts, services/EmailQueue.ts
+viewmodels/useArchiveDetailViewModel.ts
+views/ArchiveDetailView.tsx
+```
+
+### Изменённые файлы
+
+```
+models/Waste.ts (+operator/comment/sessionId/wasteKindTitle)
+models/ArchivedJumbo.ts (итоговая статистика + sessions/wastes/период)
+models/index.ts, storage/StorageKeys.ts (+wastes/emailQueue)
+services/WarehouseService.ts (+closeJumbo/summarizeForClose), services/index.ts
+repositories/index.ts, core/di/container.ts
+viewmodels/{useJumboDetailViewModel,useArchiveViewModel,useDashboardViewModel,index}.ts
+views/{JumboDetailView,ArchiveView,DashboardView,index}.tsx, App.tsx
+```
+
+### ER-диаграмма новых сущностей
+
+```
+ArchivedJumbo {
+  id (= Jumbo.id), jumbo (финальный снимок),
+  operations: JumboOperation[], sessions: CuttingSession[], wastes: Waste[],
+  statistics: ArchivedJumboStatistics {
+    totalAreaM2, usefulAreaM2, wasteAreaM2, scrapAreaM2, totalLossesM2,
+    usefulPercent, wastePercent, scrapPercent,
+    usedLengthM, initialWindingM, finalRemainderM,
+    ordersCount, rollsCount, operationsCount, efficiency },
+  usageStartDate, usageEndDate, archivedAt, archivedBy, comment
+}
+Waste { id, kind (technological|edge|inner), areaM2, lengthM, jumboId,
+        sessionId?, operator?, comment?, createdAt }
+```
+
+### Описание жизненного цикла (кратко)
+
+`На складе` → (первый расчёт) `В работе` → (остаток < 300 м) `Подлежит
+списанию` → (действие «Закрыть Джамб») `Архив`. Показатели Джамба обновляются
+инкрементально во время работы; при закрытии считаются итоги и фиксируются в
+`ArchivedJumbo` — архив никогда не пересчитывается.
+
+### Подготовка данных для PDF
+
+`ReportBuilder.buildJumboReport(archived)` возвращает `JumboReportData`
+(заголовок + секции «Общие сведения / Материал / Площади / Показатели» из строк
+label→value). Рендерер PDF следующего этапа использует эту структуру без
+пересчёта.
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений.
+- Harness (in-memory store) — 30/30: закрытие Джамба, создание тех. остатка,
+  итоговые показатели, архивирование, неизменяемость истории, ReportBuilder,
+  EmailQueue, повторное закрытие = no-op, метрики Dashboard.
+- Движок расчёта идентичен `main`.
+
+---
+
 ## Этап 3 — Интеграция расчёта нарезки со складом
 
 > Платформа та же (React + TS + Vite). «SwiftData» — слой репозиториев над

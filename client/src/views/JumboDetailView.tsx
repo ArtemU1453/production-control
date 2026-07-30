@@ -12,6 +12,7 @@ import {
 } from "@/components";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { icons } from "@/resources/icons";
 import { strings } from "@/resources/strings";
 import {
@@ -34,7 +46,19 @@ import { useJumboDetailViewModel, type JumboEdit } from "@/viewmodels";
 
 export function JumboDetailView({ jumboId }: { jumboId: string }) {
   const vm = useJumboDetailViewModel(jumboId);
+  const { toast } = useToast();
   const [edit, setEdit] = useState<JumboEdit | null>(null);
+  const [closeComment, setCloseComment] = useState("");
+
+  const onClose = async () => {
+    const outcome = await vm.close(closeComment);
+    if (outcome) {
+      toast({
+        title: "Джамб закрыт и перемещён в архив",
+        description: `Технологический остаток: ${formatMeters(outcome.waste.lengthM ?? 0)} · Использование: ${outcome.archived.statistics.usefulPercent.toFixed(1)}%`,
+      });
+    }
+  };
 
   useEffect(() => {
     if (vm.jumbo) {
@@ -166,6 +190,67 @@ export function JumboDetailView({ jumboId }: { jumboId: string }) {
             </PrimaryButton>
           </div>
         </CardView>
+
+        {vm.canClose && vm.closeSummary ? (
+          <CardView title="Закрытие Джамба" icon={icons.archive} animate>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <InfoRow label="Номер" value={vm.closeSummary.stockNumber} />
+                <InfoRow label="Материал" value={vm.closeSummary.materialCode} />
+                <InfoRow label="Начальная намотка" value={formatMeters(vm.closeSummary.initialWindingM)} />
+                <InfoRow label="Остаток" value={formatMeters(vm.closeSummary.currentRemainderM)} />
+                <InfoRow label="Использовано" value={formatMeters(vm.closeSummary.usedLength)} />
+                <InfoRow label="Полезная площадь" value={formatArea(vm.closeSummary.usefulArea)} />
+                <InfoRow label="Количество заказов" value={vm.closeSummary.ordersCount} />
+                <InfoRow label="Количество рулонов" value={vm.closeSummary.rollsCount} last />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="close-comment" className="text-xs">Комментарий</Label>
+                <Textarea
+                  id="close-comment"
+                  className="rounded-2xl"
+                  value={closeComment}
+                  onChange={(event) => setCloseComment(event.target.value)}
+                  placeholder="Необязательно"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Остаток будет списан как технологический остаток, показатели зафиксированы, Джамб
+                перемещён в архив. Действие необратимо.
+              </p>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <PrimaryButton fullWidth loading={vm.closing} icon={icons.archive}>
+                    Закрыть Джамб
+                  </PrimaryButton>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Закрыть Джамб № {vm.closeSummary.stockNumber}?</AlertDialogTitle>
+                  </AlertDialogHeader>
+                  <div className="space-y-1 text-sm">
+                    <InfoRow label="Остаток → тех. остаток" value={formatMeters(vm.closeSummary.currentRemainderM)} />
+                    <InfoRow label="Использовано" value={formatMeters(vm.closeSummary.usedLength)} />
+                    <InfoRow label="Заказов / Рулонов" value={`${vm.closeSummary.ordersCount} / ${vm.closeSummary.rollsCount}`} last />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Отмена</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => void onClose()}>Закрыть и архивировать</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardView>
+        ) : null}
+
+        {vm.jumbo.status === JumboStatus.archived ? (
+          <CardView animate>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <icons.archive className="h-4 w-4" />
+              Джамб закрыт и находится в архиве.
+            </div>
+          </CardView>
+        ) : null}
 
         <CardView title={strings.jumbo.timeline} icon={icons.history} animate>
           {vm.operations.length === 0 ? (

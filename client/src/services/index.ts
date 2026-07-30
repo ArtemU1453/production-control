@@ -8,14 +8,30 @@ export type {
   EmailMessage,
   EmailDeliveryResult,
 } from "./EmailService";
-export { createWarehouseService, LOW_REMAINDER_THRESHOLD_M } from "./WarehouseService";
+export {
+  createWarehouseService,
+  LOW_REMAINDER_THRESHOLD_M,
+  summarizeForClose,
+} from "./WarehouseService";
 export type {
   WarehouseService,
   JumboReceiptItem,
   ReceiptBatch,
   CompleteCalculationParams,
   CompleteCalculationOutcome,
+  CloseJumboParams,
+  CloseJumboOutcome,
+  JumboCloseSummary,
 } from "./WarehouseService";
+export { createReportBuilder } from "./ReportBuilder";
+export type {
+  ReportBuilder,
+  JumboReportData,
+  ReportSection,
+  ReportRow,
+} from "./ReportBuilder";
+export { createEmailQueue, QueuedEmailStatus } from "./EmailQueue";
+export type { EmailQueue, QueuedEmail, EmailDraft } from "./EmailQueue";
 export {
   validateRequired,
   validateMaterialCode,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
-import { JumboStatus, type CuttingSession, type Jumbo } from "@/models";
+import { JumboStatus, type ArchivedJumbo, type CuttingSession, type Jumbo } from "@/models";
 
 export interface JumboStatusCounts {
   total: number;
@@ -17,6 +17,12 @@ export interface ProductionTotals {
   usefulAreaM2: number;
 }
 
+export interface ArchiveTotals {
+  archivedCount: number;
+  avgUsefulPercent: number;
+  avgWastePercent: number;
+}
+
 interface DashboardViewModel {
   loading: boolean;
   lastSession: CuttingSession | null;
@@ -24,7 +30,26 @@ interface DashboardViewModel {
   materialsCount: number;
   counts: JumboStatusCounts;
   totals: ProductionTotals;
+  archiveTotals: ArchiveTotals;
   reload: () => Promise<void>;
+}
+
+/** Averages the frozen archive statistics (O(n) over archived Jumbos). */
+function computeArchiveTotals(archived: ArchivedJumbo[]): ArchiveTotals {
+  if (archived.length === 0) {
+    return { archivedCount: 0, avgUsefulPercent: 0, avgWastePercent: 0 };
+  }
+  let useful = 0;
+  let waste = 0;
+  for (const entry of archived) {
+    useful += entry.statistics.usefulPercent;
+    waste += entry.statistics.wastePercent;
+  }
+  return {
+    archivedCount: archived.length,
+    avgUsefulPercent: Math.round((useful / archived.length) * 10) / 10,
+    avgWastePercent: Math.round((waste / archived.length) * 10) / 10,
+  };
 }
 
 function countByStatus(jumbos: Jumbo[]): JumboStatusCounts {
@@ -81,27 +106,30 @@ function computeTotals(jumbos: Jumbo[], sessions: CuttingSession[]): ProductionT
 /** ViewModel for the dashboard. Reads live warehouse counters, production
  *  totals and the latest session straight from the repositories. */
 export function useDashboardViewModel(): DashboardViewModel {
-  const { cuttingSessions, jumbos, materials } = useServices();
+  const { cuttingSessions, jumbos, materials, archivedJumbos } = useServices();
   const [loading, setLoading] = useState(true);
   const [sessionList, setSessionList] = useState<CuttingSession[]>([]);
   const [jumboList, setJumboList] = useState<Jumbo[]>([]);
+  const [archivedList, setArchivedList] = useState<ArchivedJumbo[]>([]);
   const [materialsCount, setMaterialsCount] = useState(0);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [sessions, jumbosData, materialsData] = await Promise.all([
+      const [sessions, jumbosData, materialsData, archivedData] = await Promise.all([
         cuttingSessions.getAll(),
         jumbos.getAll(),
         materials.getAll(),
+        archivedJumbos.getAll(),
       ]);
       setSessionList(sessions);
       setJumboList(jumbosData);
       setMaterialsCount(materialsData.length);
+      setArchivedList(archivedData);
     } finally {
       setLoading(false);
     }
-  }, [cuttingSessions, jumbos, materials]);
+  }, [cuttingSessions, jumbos, materials, archivedJumbos]);
 
   useEffect(() => {
     void reload();
@@ -109,6 +137,7 @@ export function useDashboardViewModel(): DashboardViewModel {
 
   const counts = useMemo(() => countByStatus(jumboList), [jumboList]);
   const totals = useMemo(() => computeTotals(jumboList, sessionList), [jumboList, sessionList]);
+  const archiveTotals = useMemo(() => computeArchiveTotals(archivedList), [archivedList]);
 
   return {
     loading,
@@ -117,6 +146,7 @@ export function useDashboardViewModel(): DashboardViewModel {
     materialsCount,
     counts,
     totals,
+    archiveTotals,
     reload,
   };
 }

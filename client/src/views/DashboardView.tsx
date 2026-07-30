@@ -1,7 +1,12 @@
-import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Moon, Sun } from "lucide-react";
-import { CardView, LoadingView, ScreenScaffold, StatusBadge } from "@/components";
+import {
+  CardView,
+  LoadingView,
+  MetricCard,
+  ScreenScaffold,
+  StatusBadge,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -48,9 +53,7 @@ function DashboardCard({ title, subtitle, icon, href, badge, tone = "primary" }:
             </Badge>
           ) : null}
         </div>
-        {subtitle ? (
-          <div className="truncate text-xs text-muted-foreground">{subtitle}</div>
-        ) : null}
+        {subtitle ? <div className="truncate text-xs text-muted-foreground">{subtitle}</div> : null}
       </div>
       {href ? <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /> : null}
     </div>
@@ -66,14 +69,10 @@ function DashboardCard({ title, subtitle, icon, href, badge, tone = "primary" }:
   );
 }
 
-function LastCalculation({ children }: { children: ReactNode }) {
-  return <div className="space-y-2">{children}</div>;
-}
-
-/** The home dashboard: a summary of the latest calculation plus quick-access
- *  cards for every section, including prepared stubs for future modules. */
+/** The home dashboard: latest calculation, live warehouse counters from the
+ *  repositories, and quick-access cards for every section. */
 export function DashboardView() {
-  const { loading, lastOrder, ordersCount } = useDashboardViewModel();
+  const { loading, lastOrder, ordersCount, materialsCount, counts } = useDashboardViewModel();
   const { isDark, toggle } = useTheme();
 
   return (
@@ -94,6 +93,24 @@ export function DashboardView() {
     >
       <div className="space-y-4">
         <CardView
+          title="Склад сырья"
+          icon={icons.warehouse}
+          animate
+          headerTrailing={<StatusBadge label={`Всего: ${counts.total}`} tone="neutral" />}
+        >
+          {loading ? (
+            <LoadingView />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <MetricCard label="На складе" value={counts.onStock} />
+              <MetricCard label="В работе" value={counts.inWork} />
+              <MetricCard label="К списанию" value={counts.toWriteOff} />
+              <MetricCard label="Архив" value={counts.archived} />
+            </div>
+          )}
+        </CardView>
+
+        <CardView
           title="Последний расчёт"
           icon={icons.clock}
           animate
@@ -109,10 +126,8 @@ export function DashboardView() {
           {loading ? (
             <LoadingView />
           ) : lastOrder ? (
-            <LastCalculation>
-              <div className="text-xs text-muted-foreground">
-                {formatDateTime(lastOrder.createdAt)}
-              </div>
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">{formatDateTime(lastOrder.createdAt)}</div>
               <div className="text-lg font-semibold">
                 {lastOrder.input.rollWidthMm} × {lastOrder.input.rollLengthM} м
               </div>
@@ -120,7 +135,7 @@ export function DashboardView() {
                 Заказ: {lastOrder.input.orderRolls} шт · Ручьёв: {lastOrder.result.main_count} · Циклов:{" "}
                 {lastOrder.result.cycles_used}
               </div>
-            </LastCalculation>
+            </div>
           ) : (
             <div className="text-sm text-muted-foreground">
               Ещё нет расчётов. Откройте «Расчёт» и сохраните первый результат.
@@ -129,11 +144,19 @@ export function DashboardView() {
         </CardView>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <DashboardCard title="Быстрый расчёт" subtitle="Новый раскрой Джамба" icon="quick" href="/calculator" />
           <DashboardCard
-            title="Быстрый расчёт"
-            subtitle="Новый раскрой Джамба"
-            icon="quick"
-            href="/calculator"
+            title="Материалы"
+            subtitle={`Материалов: ${materialsCount}`}
+            icon="material"
+            href="/materials"
+            tone="accent"
+          />
+          <DashboardCard
+            title="Склад"
+            subtitle={`Всего Джамбов: ${counts.total}`}
+            icon="warehouse"
+            href="/warehouse"
           />
           <DashboardCard
             title="История"
@@ -143,32 +166,13 @@ export function DashboardView() {
             tone="accent"
           />
           <DashboardCard
-            title="Склад"
-            subtitle="Учёт Джамбов"
-            icon="warehouse"
-            href="/warehouse"
-            badge="Скоро"
-          />
-          <DashboardCard
-            title="Отчёты"
-            subtitle="PDF и рассылка"
-            icon="reports"
-            href="/reports"
-            badge="Скоро"
-          />
-          <DashboardCard
             title="Архив"
-            subtitle="Списанные Джамбы"
+            subtitle={`В архиве: ${counts.archived}`}
             icon="archive"
-            badge="Скоро"
-            tone="accent"
+            href="/archive"
           />
-          <DashboardCard
-            title="Настройки"
-            subtitle="Профиль и оформление"
-            icon="settings"
-            href="/settings"
-          />
+          <DashboardCard title="Отчёты" subtitle="PDF и рассылка" icon="reports" href="/reports" badge="Скоро" tone="accent" />
+          <DashboardCard title="Настройки" subtitle="Профиль и оформление" icon="settings" href="/settings" />
         </div>
       </div>
     </ScreenScaffold>

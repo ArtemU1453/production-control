@@ -1,38 +1,57 @@
-/** Type of operation recorded against a Jumbo. */
+/** Type of operation recorded against a Jumbo in the journal. */
 export enum JumboOperationType {
   /** Приход — Jumbo received into the warehouse. */
   receipt = "receipt",
-  /** Нарезка — a cutting run consumed part of the Jumbo. */
-  cut = "cut",
-  /** Списание — Jumbo written off. */
+  /** Начало использования — first use started. */
+  usageStart = "usageStart",
+  /** Изменение — record edited. */
+  edit = "edit",
+  /** Корректировка — manual correction of values. */
+  adjustment = "adjustment",
+  /** Архивирование — moved to the archive. */
+  archive = "archive",
+  /** Расчёт — consumed by a cutting run (added automatically in a later phase). */
+  calculation = "calculation",
+  /** Брак — defect recorded (later phase). */
+  defect = "defect",
+  /** Списание — written off (later phase). */
   writeOff = "writeOff",
+}
+
+const titles: Record<JumboOperationType, string> = {
+  [JumboOperationType.receipt]: "Приход",
+  [JumboOperationType.usageStart]: "Начало использования",
+  [JumboOperationType.edit]: "Изменение",
+  [JumboOperationType.adjustment]: "Корректировка",
+  [JumboOperationType.archive]: "Архивирование",
+  [JumboOperationType.calculation]: "Расчёт",
+  [JumboOperationType.defect]: "Брак",
+  [JumboOperationType.writeOff]: "Списание",
+};
+
+export function jumboOperationTitle(type: JumboOperationType): string {
+  return titles[type];
 }
 
 /**
  * A journal entry for one operation on a Jumbo.
  *
- * Each entry carries the deltas that later phases add to the Jumbo's stored
- * accumulators. Keeping the per-operation deltas here (rather than only the
- * running totals) preserves a full audit trail while the Jumbo record holds the
- * incrementally-maintained totals.
+ * Core fields (timestamp, type, comment, operator) are recorded automatically
+ * whenever a Jumbo is received, edited or archived. The optional delta fields
+ * carry the per-operation increments that later phases add to the Jumbo's
+ * stored accumulators — keeping a full audit trail without recomputing totals.
  */
 export interface JumboOperation {
   id: string;
   jumboId: string;
   type: JumboOperationType;
-  date: string;
-
-  /** Length consumed by this operation, in metres. */
-  usedLengthM: number;
-  /** Useful area produced by this operation, in m². */
-  usefulAreaM2: number;
-  /** Waste/defect area produced by this operation, in m². */
-  wasteAreaM2: number;
-  /** Technological scrap produced by this operation, in m². */
-  techScrapM2: number;
-
-  orderId?: string;
+  /** Date and time of the operation (ISO-8601). */
+  timestamp: string;
+  comment?: string;
   operator?: string;
-  machineId?: string;
-  note?: string;
+
+  usedLengthDeltaM?: number;
+  usefulAreaDeltaM2?: number;
+  wasteAreaDeltaM2?: number;
+  scrapAreaDeltaM2?: number;
 }

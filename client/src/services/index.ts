@@ -8,3 +8,17 @@ export type {
   EmailMessage,
   EmailDeliveryResult,
 } from "./EmailService";
+export { createWarehouseService } from "./WarehouseService";
+export type {
+  WarehouseService,
+  JumboReceiptItem,
+  ReceiptBatch,
+} from "./WarehouseService";
+export {
+  validateRequired,
+  validateMaterialCode,
+  validatePositive,
+  validateNonNegative,
+  firstError,
+} from "./validation";
+export type { ValidationError } from "./validation";

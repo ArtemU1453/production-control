@@ -4,3 +4,8 @@ export { HistoryView } from "./HistoryView";
 export { WarehouseView } from "./WarehouseView";
 export { ReportsView } from "./ReportsView";
 export { SettingsView } from "./SettingsView";
+export { MaterialsView } from "./MaterialsView";
+export { MaterialEditorView } from "./MaterialEditorView";
+export { ReceiptView } from "./ReceiptView";
+export { JumboDetailView } from "./JumboDetailView";
+export { ArchiveView } from "./ArchiveView";

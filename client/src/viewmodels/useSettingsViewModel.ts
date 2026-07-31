@@ -19,7 +19,7 @@ interface SettingsViewModel {
  * the ThemeManager so the toggle stays in sync everywhere.
  */
 export function useSettingsViewModel(): SettingsViewModel {
-  const { settings: repository } = useServices();
+  const { settings: repository, intelligence } = useServices();
   const { isDark, setDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -41,12 +41,17 @@ export function useSettingsViewModel(): SettingsViewModel {
   const update = useCallback(
     <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
       setSettings((previous) => {
+        if (previous[key] === value) {
+          return previous;
+        }
         const next = { ...previous, [key]: value };
         void repository.save(next);
+        // Record the change (who/what/when/old→new) additively.
+        void intelligence.settingsHistory.record(previous, next, previous.operator || undefined);
         return next;
       });
     },
-    [repository],
+    [repository, intelligence],
   );
 
   return {

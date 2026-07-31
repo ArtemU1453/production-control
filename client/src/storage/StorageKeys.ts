@@ -12,6 +12,8 @@ export const storageKeys = {
   auditLogs: "narezka.store.auditLogs",
   users: "narezka.store.users",
   backupMeta: "narezka.store.backupMeta",
+  notificationStates: "narezka.store.notificationStates",
+  settingsHistory: "narezka.store.settingsHistory",
   settings: "narezka.store.settings",
 } as const;
 
@@ -29,5 +31,7 @@ export const backupStorageKeys: readonly StorageKey[] = [
   storageKeys.errorLogs,
   storageKeys.auditLogs,
   storageKeys.users,
+  storageKeys.notificationStates,
+  storageKeys.settingsHistory,
   storageKeys.settings,
 ];

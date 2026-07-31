@@ -184,9 +184,12 @@ export function DashboardView() {
           <DashboardCard title="Склад" subtitle={`Всего Джамбов: ${counts.total}`} icon="warehouse" href="/warehouse" tone="accent" />
           <DashboardCard title="История" subtitle={`Заказов: ${sessionsCount}`} icon="history" href="/history" />
           <DashboardCard title="Архив" subtitle={`В архиве: ${counts.archived}`} icon="archive" href="/archive" tone="accent" />
-          <DashboardCard title="Аналитика" subtitle="KPI и графики" icon="analytics" href="/analytics" />
-          <DashboardCard title="Отчёты" subtitle="Формирование отчётов" icon="reports" href="/reports" tone="accent" />
-          <DashboardCard title="Документы" subtitle="PDF и рассылка" icon="reports" href="/documents" />
+          <DashboardCard title="Уведомления" subtitle="Предупреждения системы" icon="notifications" href="/notifications" />
+          <DashboardCard title="Центр решений" subtitle="Прогнозы и рекомендации" icon="insights" href="/decisions" tone="accent" />
+          <DashboardCard title="Поиск" subtitle="По всей системе" icon="search" href="/search" />
+          <DashboardCard title="Аналитика" subtitle="KPI и графики" icon="analytics" href="/analytics" tone="accent" />
+          <DashboardCard title="Отчёты" subtitle="Формирование отчётов" icon="reports" href="/reports" />
+          <DashboardCard title="Документы" subtitle="PDF и рассылка" icon="reports" href="/documents" tone="accent" />
           <DashboardCard title="Настройки" subtitle="Профиль и оформление" icon="settings" href="/settings" />
         </div>
       </div>

@@ -36,6 +36,8 @@ const groups: HubGroup[] = [
     title: strings.admin.groupSystem,
     items: [
       { href: "/settings/logs", title: strings.admin.logs, hint: strings.admin.logsHint, icon: icons.logs },
+      { href: "/settings/history", title: strings.intelligence.settingsHistoryTitle, hint: strings.intelligence.settingsHistorySubtitle, icon: icons.history },
+      { href: "/settings/integrations", title: strings.intelligence.integrationsTitle, hint: strings.intelligence.integrationsSubtitle, icon: icons.integrations },
       { href: "/settings/about", title: strings.admin.about, hint: strings.admin.aboutHint, icon: icons.about },
     ],
   },

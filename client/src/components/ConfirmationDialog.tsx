@@ -11,6 +11,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { haptics } from "@/designsystem";
 
 interface ConfirmationDialogProps {
   /** Element that opens the dialog. */
@@ -54,7 +55,14 @@ export function ConfirmationDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            onClick={() => {
+              if (destructive) {
+                haptics.warning();
+              } else {
+                haptics.impact();
+              }
+              onConfirm();
+            }}
             className={cn(destructive && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
           >
             {confirmLabel}

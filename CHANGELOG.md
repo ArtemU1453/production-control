@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## Развёртывание — Обновление под новое имя репозитория (`production-control`)
+
+> Репозиторий переименован `Kalkuliator-nariezchika-iOS` → `production-control`.
+> GitHub Pages проект-сайта отдаётся из под-пути `/production-control/`, поэтому
+> база сборки обновлена, иначе пути ассетов не совпадали бы с новым адресом.
+
+- **`.github/workflows/deploy-pages.yml`** — `VITE_BASE` → `/production-control/`.
+- **`docs/18-deployment.md`** — постоянная ссылка и база обновлены на новое имя;
+  добавлено примечание, что при переименовании репозитория путь нужно обновлять.
+- Новая постоянная ссылка: `https://artemu1453.github.io/production-control/`.
+- Проверка: `vite build` c `VITE_BASE=/production-control/` — пути ассетов
+  указывают на `/production-control/…`; `tsc` 0 ошибок; движок расчёта не менялся.
+
 ## Развёртывание — Публикация тестовой версии на GitHub Pages
 
 > Инфраструктура публикации, без изменений бизнес-логики, алгоритмов расчёта,
@@ -14,14 +27,14 @@ GitHub Pages (проект полностью статический) + GitHub A
 ### Изменения
 
 - **`.github/workflows/deploy-pages.yml`** — новый workflow: `npm ci` →
-  `npm run check` → `vite build` (с `VITE_BASE=/Kalkuliator-nariezchika-iOS/`) →
+  `npm run check` → `vite build` (с `VITE_BASE=/production-control/`) →
   SPA-fallback `cp index.html 404.html` → публикация `dist/public` на Pages.
   Триггер — push в `main` и ручной запуск.
 - **`vite.config.ts`** — `base: process.env.VITE_BASE ?? "/"` (env-gated;
   по умолчанию `/`, для Pages — под-путь проекта).
 - **`client/src/App.tsx`** — маршрутизатор обёрнут в `<Router base>` wouter,
   база берётся из `import.meta.env.BASE_URL` (в dev/корне — `""`, поведение не
-  меняется; под Pages — `/Kalkuliator-nariezchika-iOS`), чтобы ссылки и
+  меняется; под Pages — `/production-control`), чтобы ссылки и
   навигация работали из под-пути.
 - **`client/public/manifest.webmanifest`** — `start_url`/`scope`/иконка
   переведены на относительные пути (`./`) — корректны и в корне, и в под-пути.

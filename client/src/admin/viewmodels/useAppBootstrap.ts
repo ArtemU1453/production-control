@@ -8,7 +8,7 @@ import { useServices } from "@/core/di/AppServices";
  * fact. Runs once for the app's lifetime.
  */
 export function useAppBootstrap(): void {
-  const { admin } = useServices();
+  const { admin, errorHandler } = useServices();
 
   useEffect(() => {
     void admin.users.ensureDefault();
@@ -18,21 +18,11 @@ export function useAppBootstrap(): void {
     }
 
     const onError = (event: ErrorEvent) => {
-      void admin.errorLog.log(event.message || "Необработанная ошибка", {
-        stack: event.error instanceof Error ? event.error.stack : undefined,
-        action: "window.onerror",
-      });
+      errorHandler.handle(event.error ?? event.message, "window.onerror");
     };
 
     const onRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason;
-      void admin.errorLog.log(
-        reason instanceof Error ? reason.message : "Необработанное отклонение промиса",
-        {
-          stack: reason instanceof Error ? reason.stack : undefined,
-          action: "unhandledrejection",
-        },
-      );
+      errorHandler.handle(event.reason, "unhandledrejection");
     };
 
     window.addEventListener("error", onError);
@@ -41,5 +31,5 @@ export function useAppBootstrap(): void {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
     };
-  }, [admin]);
+  }, [admin, errorHandler]);
 }

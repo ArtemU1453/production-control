@@ -35,6 +35,7 @@ PDF/e-mail, аналитика/KPI, администрирование, резе
 | + | Design System и UI-компоненты | [14-ui-design-system.md](14-ui-design-system.md) |
 | + | Центр решений (Intelligence, v2.0) | [15-intelligence.md](15-intelligence.md) |
 | + | Release Checklist | [16-release-checklist.md](16-release-checklist.md) |
+| + | Масштабируемость и инфраструктура | [17-scalability-and-infrastructure.md](17-scalability-and-infrastructure.md) |
 
 ## Быстрый старт для разработчика
 

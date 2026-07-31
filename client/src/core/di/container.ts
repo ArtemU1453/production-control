@@ -36,6 +36,10 @@ import {
   createIntelligenceCenter,
   type IntelligenceCenter,
 } from "../../intelligence";
+import { appConfig, type AppConfig } from "../../config";
+import { logger, type Logger } from "../logging/Logger";
+import { createErrorHandler, type ErrorHandler } from "../errors/ErrorHandler";
+import { createMonitoring, type Monitoring } from "../monitoring/Monitoring";
 
 /**
  * Application composition root.
@@ -67,6 +71,11 @@ export interface AppContainer {
   admin: AdminCenter;
   /** Decision support (v2.0): notifications, forecasts, quality, search. */
   intelligence: IntelligenceCenter;
+  /** Foundation (v3.0 prep): configuration, logging, monitoring, error handling. */
+  config: AppConfig;
+  logger: Logger;
+  monitoring: Monitoring;
+  errorHandler: ErrorHandler;
 }
 
 export function createAppContainer(
@@ -93,6 +102,20 @@ export function createAppContainer(
     store,
   });
   const admin = createAdminCenter(store);
+  const monitoring = createMonitoring();
+  // Unified error handling: normalise → log (Logger) → persist (error log) →
+  // forward to the crash reporter (no-op until a backend is provided).
+  const errorHandler = createErrorHandler({
+    logger,
+    reportSinks: [
+      (error) =>
+        void admin.errorLog.log(error.message, {
+          stack: error.cause instanceof Error ? error.cause.stack : undefined,
+          action: error.code,
+        }),
+      (error) => monitoring.crash.report(error),
+    ],
+  });
   const intelligence = createIntelligenceCenter({
     reportRepository: reportCenter.repository,
     settings,
@@ -128,5 +151,9 @@ export function createAppContainer(
     analytics: createAnalyticsService(reportCenter.repository, createKpiEngine()),
     admin,
     intelligence,
+    config: appConfig,
+    logger,
+    monitoring,
+    errorHandler,
   };
 }

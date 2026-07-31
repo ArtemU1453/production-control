@@ -11,14 +11,15 @@ import { ErrorBoundary } from "@/app/ErrorBoundary";
 /** Wraps the tree in an error boundary that routes render crashes to the admin
  *  error log (React never sends those through window.onerror). */
 function CrashLoggingBoundary({ children }: { children: ReactNode }) {
-  const { admin } = useServices();
+  const { errorHandler } = useServices();
   return (
     <ErrorBoundary
       onError={(error, info) => {
-        void admin.errorLog.log(error.message || "Ошибка отрисовки", {
-          stack: `${error.stack ?? ""}\n${info.componentStack ?? ""}`.trim(),
-          action: "render",
-        });
+        // Preserve the React component stack alongside the error stack, then
+        // route through the unified handler (logs + persists to the error log).
+        const wrapped = error instanceof Error ? error : new Error(String(error));
+        wrapped.stack = `${wrapped.stack ?? ""}\n${info.componentStack ?? ""}`.trim();
+        errorHandler.handle(wrapped, "render");
       }}
     >
       {children}

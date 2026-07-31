@@ -18,16 +18,10 @@ import {
 } from "../../repositories";
 import {
   createCalculationService,
-  createEmailQueue,
-  createEmailService,
   createReportBuilder,
-  createReportService,
   createWarehouseService,
   type CalculationService,
-  type EmailQueue,
-  type EmailService,
   type ReportBuilder,
-  type ReportService,
   type WarehouseService,
 } from "../../services";
 import { createReportCenter, type ReportCenter } from "../../reports";
@@ -57,10 +51,7 @@ export interface AppContainer {
   archivedJumbos: ArchivedJumboRepository;
   settings: SettingsRepository;
   calculation: CalculationService;
-  reports: ReportService;
   reportBuilder: ReportBuilder;
-  email: EmailService;
-  emailQueue: EmailQueue;
   warehouse: WarehouseService;
   /** Report Center: report generation, cache and export/email providers. */
   reportCenter: ReportCenter;
@@ -100,10 +91,7 @@ export function createAppContainer(
     archivedJumbos,
     settings,
     calculation: createCalculationService(),
-    reports: createReportService(),
     reportBuilder: createReportBuilder(),
-    email: createEmailService(),
-    emailQueue: createEmailQueue(store),
     warehouse: createWarehouseService(
       jumbos,
       jumboOperations,

@@ -23,8 +23,10 @@ export function AboutView() {
       <div className="space-y-4">
         <CardView title="О приложении" icon={icons.about} animate>
           <div className="space-y-2">
-            <InfoRow label={strings.appName} value={strings.settings.version} />
-            <InfoRow label="Версия" value={appInfo.version} last />
+            <InfoRow label="Приложение" value={strings.appName} />
+            <InfoRow label="Версия" value={appInfo.version} />
+            <InfoRow label="Сборка" value={appInfo.build} />
+            <InfoRow label="Идентификатор" value={appInfo.bundleId} last />
           </div>
         </CardView>
 

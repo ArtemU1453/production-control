@@ -175,3 +175,49 @@
     mix-blend-mode: screen;
   }
 }
+
+/* Accessibility: honour the OS "Reduce Motion" preference. framer-motion is
+   handled via <MotionConfig reducedMotion="user">; this covers CSS transitions,
+   animations and smooth scrolling for everything else. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Accessibility: strengthen separation when the user asks for more contrast.
+   The decorative noise texture is dropped and borders are made opaque. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: 225 30% 70%;
+    --card-border: 225 30% 70%;
+    --muted-foreground: 230 20% 30%;
+  }
+  .dark {
+    --border: 230 20% 40%;
+    --card-border: 230 20% 40%;
+    --muted-foreground: 220 16% 82%;
+  }
+  .noise::before {
+    display: none;
+  }
+}
+
+/* Windows High Contrast / forced-colors: let the OS palette drive the glass
+   surfaces so text keeps system-guaranteed contrast. */
+@media (forced-colors: active) {
+  .glass,
+  .dark .glass {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+  .noise::before {
+    display: none;
+  }
+}

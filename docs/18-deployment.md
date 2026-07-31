@@ -7,7 +7,7 @@
 ## Постоянная ссылка
 
 ```
-https://artemu1453.github.io/Kalkuliator-nariezchika-iOS/
+https://artemu1453.github.io/production-control/
 ```
 
 (поддомен GitHub Pages в нижнем регистре; путь проекта сохраняет регистр имени
@@ -18,8 +18,9 @@ https://artemu1453.github.io/Kalkuliator-nariezchika-iOS/
 - Workflow `.github/workflows/deploy-pages.yml`: `npm ci` → `npm run check` →
   `vite build` → SPA-fallback → публикация каталога `dist/public`.
 - Проект-сайт отдаётся из под-пути `/<repo>/`, поэтому клиент собирается с
-  `VITE_BASE=/Kalkuliator-nariezchika-iOS/`. Значение должно точно совпадать с
-  именем репозитория (регистр важен).
+  `VITE_BASE=/production-control/`. Значение должно точно совпадать с именем
+  репозитория (регистр важен) — при переименовании репозитория этот путь и
+  ссылку выше нужно обновить и передеплоить.
 - Vite (`base`) переписывает пути ассетов и задаёт `import.meta.env.BASE_URL`;
   `<Router base>` (wouter) берёт базу оттуда, поэтому клиентская маршрутизация
   работает из под-пути.

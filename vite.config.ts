@@ -6,6 +6,10 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { metaImagesPlugin } from "./vite-plugin-meta-images";
 
 export default defineConfig({
+  // Sub-path the app is served from. Defaults to "/" (local dev, root deploys);
+  // the GitHub Pages workflow sets VITE_BASE=/<repo>/ so built asset URLs and
+  // the injected BASE_URL resolve correctly under the project-site sub-path.
+  base: process.env.VITE_BASE ?? "/",
   plugins: [
     react(),
     runtimeErrorOverlay(),

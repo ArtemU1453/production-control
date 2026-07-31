@@ -1,4 +1,4 @@
-import { Route, Switch } from "wouter";
+import { Route, Router, Switch } from "wouter";
 import { AppProviders } from "@/app/providers/AppProviders";
 import { TabBar } from "@/components";
 import {
@@ -116,10 +116,19 @@ function AppRouter() {
   );
 }
 
+// Base path the app is served from. Vite injects `BASE_URL` from the build-time
+// `base` (default "/" for local dev and root deploys, "/<repo>/" for a GitHub
+// Pages project site). Stripping the trailing slash yields the wouter router
+// base so links and navigation stay correct under a sub-path — an empty string
+// (root) leaves routing exactly as before.
+const routerBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export default function App() {
   return (
-    <AppProviders>
-      <AppRouter />
-    </AppProviders>
+    <Router base={routerBase}>
+      <AppProviders>
+        <AppRouter />
+      </AppProviders>
+    </Router>
   );
 }

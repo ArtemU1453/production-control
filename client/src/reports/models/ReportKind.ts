@@ -4,6 +4,7 @@ import type { IconName } from "@/resources/icons";
  *  builder in the registry is all that a new report requires. */
 export enum ReportKind {
   production = "production",
+  productionSummary = "productionSummary",
   orders = "orders",
   jumbos = "jumbos",
   stock = "stock",
@@ -25,6 +26,12 @@ const definitions: Record<ReportKind, ReportDefinition> = {
     title: "Производственный отчёт",
     description: "Главный отчёт предприятия: заказы, расход, потери, использование.",
     icon: "gauge",
+  },
+  [ReportKind.productionSummary]: {
+    kind: ReportKind.productionSummary,
+    title: "Производственная сводка",
+    description: "Сводка для руководителя: ключевые KPI и показатели по станкам.",
+    icon: "insights",
   },
   [ReportKind.orders]: {
     kind: ReportKind.orders,

@@ -1,6 +1,7 @@
 import { ReportKind } from "../models/ReportKind";
 import type { ReportBuilder } from "./support";
 import { productionBuilder } from "./productionBuilder";
+import { productionSummaryBuilder } from "./productionSummaryBuilder";
 import { ordersBuilder } from "./ordersBuilder";
 import { jumbosBuilder } from "./jumbosBuilder";
 import { stockBuilder } from "./stockBuilder";
@@ -15,6 +16,7 @@ import { materialsBuilder } from "./materialsBuilder";
  */
 const builders: ReportBuilder[] = [
   productionBuilder,
+  productionSummaryBuilder,
   ordersBuilder,
   jumbosBuilder,
   stockBuilder,

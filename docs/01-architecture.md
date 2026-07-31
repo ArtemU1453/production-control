@@ -60,7 +60,8 @@ QueryClientProvider
 
 | Модуль | Назначение |
 | --- | --- |
-| `core/` | алгоритм расчёта (**заморожен**), DI, тема |
+| `core/` | алгоритм расчёта (**заморожен**), DI, тема, logging, errors, monitoring |
+| `config/` | окружение, Feature Flags, AppConfig — см. [17](17-scalability-and-infrastructure.md) |
 | `models/` | доменные модели (plain, сериализуемые) |
 | `storage/` | `KeyValueStore`, `LocalStorageStore`, ключи |
 | `repositories/` | `CollectionRepository<T>` + коллекции |

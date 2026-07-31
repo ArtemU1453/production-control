@@ -129,7 +129,7 @@ export function CalculatorView() {
           {/* ── Input rail ─────────────────────────────────────────────── */}
           <aside
             data-no-print
-            className="order-1 xl:col-span-4 xl:sticky xl:top-4 xl:self-start"
+            className="order-1 min-w-0 xl:col-span-4 xl:sticky xl:top-4 xl:self-start"
           >
             <CardView title="Параметры" icon={icons.cut} animate>
               <Form {...form}>
@@ -253,7 +253,7 @@ export function CalculatorView() {
           </aside>
 
           {/* ── Main column: summary band, hero visualisation, KPI ──────── */}
-          <div className="order-2 space-y-4 xl:col-span-8">
+          <div className="order-2 min-w-0 space-y-4 xl:col-span-8">
             <InfoPanels
               values={values}
               plan={plan}

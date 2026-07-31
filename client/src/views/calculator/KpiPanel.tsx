@@ -83,10 +83,11 @@ export function KpiPanel({ plan, model, className }: KpiPanelProps) {
 
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
-            <span className={cn(AppTypography.footnote, "flex items-center gap-1.5 text-muted-foreground")}>
-              <Gauge className="h-4 w-4" aria-hidden /> Использовано материала
+            <span className={cn(AppTypography.footnote, "flex min-w-0 items-center gap-1.5 text-muted-foreground")}>
+              <Gauge className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="truncate">Использовано материала</span>
             </span>
-            <span className={cn(AppTypography.subheadline, usedPercent >= 99 ? "text-[hsl(142_71%_40%)]" : "text-foreground")}>
+            <span className={cn(AppTypography.subheadline, "shrink-0 tabular-nums", usedPercent >= 99 ? "text-[hsl(142_71%_40%)]" : "text-foreground")}>
               {formatPercent(usedPercent)}
             </span>
           </div>

@@ -10,7 +10,6 @@ export { EmptyState } from "./EmptyState";
 export { SearchBar } from "./SearchBar";
 export { SegmentedControl, type SegmentOption } from "./SegmentedControl";
 export { ListRow } from "./ListRow";
-export { TabBar } from "./TabBar";
 export { ScreenScaffold } from "./ScreenScaffold";
 
 // UI Components library (Design-System-driven, presentational).

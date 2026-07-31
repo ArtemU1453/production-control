@@ -1,6 +1,6 @@
 import { Route, Router, Switch } from "wouter";
 import { AppProviders } from "@/app/providers/AppProviders";
-import { TabBar } from "@/components";
+import { AppLayout } from "@/app/layout";
 import {
   ArchiveDetailView,
   ArchiveView,
@@ -55,7 +55,7 @@ function AppRouter() {
   useDocumentScheduler();
   useAppBootstrap();
   return (
-    <>
+    <AppLayout>
       <Switch>
         <Route path="/" component={DashboardView} />
         <Route path="/production" component={ProductionView} />
@@ -111,8 +111,7 @@ function AppRouter() {
         <Route path="/settings/about" component={AboutView} />
         <Route component={NotFound} />
       </Switch>
-      <TabBar />
-    </>
+    </AppLayout>
   );
 }
 

@@ -20,6 +20,16 @@ export const tabs: readonly TabDefinition[] = [
   { key: "settings", path: "/settings", label: strings.tabs.settings, icon: "settings" },
 ];
 
+/** Secondary destinations surfaced in the desktop sidebar only. They keep the
+ *  phone bottom bar focused on the primary tabs while giving desktop the full
+ *  professional navigation. */
+export const secondaryNav: readonly TabDefinition[] = [
+  { key: "production", path: "/production", label: "Производство", icon: "gauge" },
+  { key: "analytics", path: "/analytics", label: "Аналитика", icon: "analytics" },
+  { key: "documents", path: "/documents", label: "Документы", icon: "reports" },
+  { key: "archive", path: "/archive", label: "Архив", icon: "archive" },
+];
+
 export function iconFor(name: IconName) {
   return icons[name];
 }

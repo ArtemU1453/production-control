@@ -146,11 +146,11 @@ function InfoCard({
 function Row({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <dt className={cn(AppTypography.caption, "text-muted-foreground")}>{label}</dt>
+      <dt className={cn(AppTypography.caption, "shrink-0 text-muted-foreground")}>{label}</dt>
       <dd
         className={cn(
           AppTypography.subheadline,
-          "tabular-nums",
+          "min-w-0 break-words text-right tabular-nums",
           tone === "danger" ? "text-destructive" : "text-foreground",
         )}
       >

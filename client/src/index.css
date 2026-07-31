@@ -138,6 +138,33 @@
     padding-bottom: max(18px, env(safe-area-inset-bottom));
   }
 
+  /* Unified layout spacing (AppLayout). Horizontal safe-area padding, a top
+     inset for the notch on mobile, and a bottom inset that clears the mobile
+     BottomNav + home indicator so the last card is always fully visible. On
+     desktop (lg+) the BottomNav is gone, so the bottom inset collapses. */
+  .safe-x {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .content-pad-t {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .content-pad-b {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom) + 0.5rem);
+  }
+  @media (min-width: 1024px) {
+    .safe-x {
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+    }
+    .content-pad-t {
+      padding-top: 0;
+    }
+    .content-pad-b {
+      padding-bottom: 2rem;
+    }
+  }
+
   .glass {
     background: linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.62));
     backdrop-filter: blur(14px);
@@ -227,12 +254,17 @@
    the calculator's visualisation and figures export cleanly. */
 @media print {
   nav[aria-label="Основная навигация"],
+  [data-app-chrome],
   [data-no-print] {
     display: none !important;
   }
-  .app-safe {
+  .app-safe,
+  .content-pad-b {
     max-width: none !important;
     padding-bottom: 0 !important;
+  }
+  .lg\:pl-64 {
+    padding-left: 0 !important;
   }
   .glass,
   .noise {

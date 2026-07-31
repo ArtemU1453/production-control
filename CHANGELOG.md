@@ -1,5 +1,255 @@
 # CHANGELOG
 
+## Этап 9 — Финальная оптимизация, тестирование и подготовка к релизу
+
+> Заключительный этап. **Новая бизнес-логика не добавлялась**; производственный
+> и математический алгоритм расчёта (`core/calculator/calculatorLogic.ts`) не
+> изменён — файл **байт-в-байт** идентичен `main` (`git diff` пуст). Работа
+> свелась к аудиту, удалению мёртвого кода, повышению надёжности, доступности и
+> подготовке к публикации.
+
+### Платформа
+
+Репозиторий назван «iOS», но проект — это веб-PWA (React 19 + TypeScript +
+Vite). Требования этапа спроецированы на веб-эквиваленты: SwiftData →
+`KeyValueStore`/репозитории; Swift Concurrency/MainActor → `async/await` + модель
+рендеринга React; App Store → релиз PWA (манифест, иконки, версия/сборка,
+приватность); `Localizable.strings` → архитектура i18n; Accessibility → ARIA и
+медиазапросы `prefers-*`.
+
+### 1. Архитектурный аудит
+
+Проверены SOLID, DRY, KISS, MVVM, Repository Pattern и DI. Слои чистые:
+Models → Storage(`KeyValueStore`) → Repositories → Services → Composition
+(`AppContainer`) → ViewModels(hooks) → Views. Нарушений инвариантов не найдено.
+
+Устранён **мёртвый код**, оставшийся от ранних этапов:
+
+- Удалены неиспользуемые сервисы `services/ReportService.ts`,
+  `services/EmailService.ts`, `services/EmailQueue.ts` — их роль давно
+  выполняют `reportCenter` (Этап 5) и модуль `documents/` (Этап 6). Ни один
+  экран/ViewModel их не потреблял (мёртвая DI-обвязка в контейнере).
+- Из `AppContainer` убраны поля `reports`, `email`, `emailQueue`; удалён
+  осиротевший ключ хранилища `emailQueue`.
+- Удалены неиспользуемые строки (`comingSoon`, группа `reports`); устаревшие
+  тексты «на следующем этапе» приведены к релизным формулировкам.
+
+Проверено отсутствие `TODO/FIXME`, `console.*`, `debugger`, `any`,
+force-unwrap `!` во всём клиентском коде.
+
+### 2. Надёжность и обработка ошибок
+
+- **React ErrorBoundary** (`app/ErrorBoundary.tsx`) — React не пропускает
+  ошибки отрисовки через `window.onerror`, поэтому это единственное место, где
+  их можно перехватить. Boundary показывает понятный экран с перезагрузкой и не
+  «гасит» приложение.
+- **Краш-лог**: `CrashLoggingBoundary` в `AppProviders` направляет пойманные
+  ошибки рендера в `admin.errorLog` (описание + стек компонента). Вместе с
+  глобальным обработчиком `window.onerror`/`unhandledrejection` (Этап 8) это
+  даёт полный контур журналирования сбоев (ErrorLog + AuditLog + CrashLog).
+
+### 3. Доступность (Accessibility)
+
+- **Reduce Motion**: `<MotionConfig reducedMotion="user">` подчиняет все
+  анимации framer-motion системной настройке; CSS-медиазапрос
+  `prefers-reduced-motion` глушит остальные переходы/анимации.
+- **Increase Contrast**: `prefers-contrast: more` усиливает границы и текст,
+  убирает декоративный «шум»; `forced-colors` (Windows High Contrast)
+  передаёт стеклянные поверхности системной палитре.
+- **Dynamic Type**: типографика на `rem`-классах Tailwind масштабируется вслед
+  за системным размером шрифта; включён pinch-zoom (снят `maximum-scale=1`).
+- **VoiceOver**: у всех иконочных кнопок есть `aria-label`, у таб-бара —
+  `role`/`aria-current`.
+
+### 4. Подготовка к релизу (App Store / PWA)
+
+- `manifest.webmanifest` — standalone, `lang: ru`, иконки, тема/фон, категории;
+  подключён в `index.html`.
+- `index.html` переписан: добавлены `<title>`, `description`, `theme-color`
+  (light/dark), apple-mobile-web-app-теги, `apple-touch-icon`; удалён
+  вендорный мусор (og/twitter-картинки Replit).
+- `appInfo` расширен полями `build` и `bundleId`; версия/сборка/идентификатор
+  выводятся на экране «О приложении».
+- **Приватность**: приложение не запрашивает разрешений устройства, работает
+  офлайн и хранит данные только в `localStorage` — эквивалент «пустого» Privacy
+  Manifest.
+
+### 5. Локализация
+
+`resources/i18n.ts` — архитектура i18n поверх единого каталога `strings.ts`
+(аналог `Localizable.strings`, русский — основной). `getStrings(locale)`
+собирает каталог из русской базы и оверрайдов локали; недостающие ключи
+прозрачно берутся из базы, поэтому частичный перевод безопасен. Английская
+локаль зарегистрирована (пока рендерит русскую базу) и заполняется по ключам.
+
+### 6. Производительность
+
+Нагрузочный прогон (10 000 Джамбов + 100 000 операций, in-memory store):
+
+| Операция | Время |
+| --- | --- |
+| Диагностика (счётчики + размер БД по всем ключам) | ~0,22 с |
+| Проверка целостности (полный `scan`) | ~0,09 с |
+| Резервная копия (снимок всех коллекций) | ~0,08 с |
+
+Тяжёлых вычислений во View нет; графики (recharts) изолированы в ленивом чанке;
+аналитика и отчёты кэшируются по ключу «фильтр + сигнатура данных»; складские
+записи используют замороженные аккумуляторы (история не пересчитывается).
+
+### 7. Итоговая структура проекта
+
+```
+client/src/
+├── core/          calculator (алгоритм — НЕ изменяется), di, theme
+├── models/        доменные модели (15)
+├── storage/       KeyValueStore, LocalStorageStore, StorageKeys
+├── repositories/  CollectionRepository<T> + 7 коллекций + Settings
+├── services/      Calculation, Warehouse, ReportBuilder, validation
+├── reports/       Report Center (ReportContext, builders×7, cache, export)
+├── documents/     PDF (печать HTML), email (симуляция), scheduler
+├── analytics/     KpiEngine, AnalyticsService, charts (lazy)
+├── admin/         logs, audit, users, backup, maintenance, diagnostics
+├── app/           providers, navigation, ErrorBoundary
+├── components/    дизайн-система (карточки, кнопки, списки, TabBar…)
+├── viewmodels/    хуки-ViewModel (26)
+├── views/         экраны (31)
+└── resources/     strings, i18n, icons, appInfo
+```
+
+### 8. Список моделей (15)
+
+Material, MaterialStatus · Jumbo, JumboStatus, JumboOperation · CuttingOrder,
+CuttingRoll, CuttingSession · Machine · Waste · ArchivedJumbo · Report ·
+Settings · DocumentSchedule. Модели администрирования: User/UserRole,
+ErrorLogEntry, AuditEntry/AuditAction, BackupData/Meta, DiagnosticsInfo,
+IntegrityReport.
+
+### 9. Список экранов (31)
+
+Dashboard · Calculator (+CuttingScheme) · Production · History · Materials,
+MaterialEditor · Warehouse, Receipt, JumboDetail · Archive, ArchiveDetail ·
+Reports (Analytics list), ReportPreview · AnalyticsCenter (+Charts) ·
+Documents, DocumentCompose, DocumentPreview (+DocumentFrame) · Settings (хаб) +
+General/Production/Email/Security/Backup/Maintenance/Diagnostics/Logs/About
+(+SettingsScaffold).
+
+### 10. Список сервисов
+
+Ядро: CalculationService (обёртка неизменного движка), WarehouseService
+(транзакционная запись, close/archive), ReportBuilder, validation. Модульные:
+ReportCenterService, DocumentService, AnalyticsService (+KpiEngine).
+Администрирование: ErrorLog, AuditLog, User, Backup, Maintenance, Diagnostics.
+
+### 11. Список репозиториев
+
+Базовый `CollectionRepository<T>` над `KeyValueStore`; коллекции: Material,
+Jumbo, JumboOperation, CuttingSession, Waste, ArchivedJumbo; плюс
+SettingsRepository и админ-репозитории Error/Audit/User.
+
+### 12. Диаграмма архитектуры
+
+```
+        ┌───────────────── Views (31) ──────────────────┐
+        │  экраны + дизайн-система (components)          │
+        └───────────────┬───────────────────────────────┘
+                        │ hooks (ViewModels, 26)
+        ┌───────────────▼───────────────────────────────┐
+        │ Services / Centers                             │
+        │ Calculation · Warehouse · ReportCenter ·       │
+        │ Documents · Analytics · Admin                  │
+        └───────────────┬───────────────────────────────┘
+                        │ Repositories (CollectionRepository<T>)
+        ┌───────────────▼───────────────────────────────┐
+        │ KeyValueStore = StorageProvider                │
+        │ local (localStorage) │ cloud (заготовка)        │
+        └────────────────────────────────────────────────┘
+   Composition root: createAppContainer(store) → useServices()
+   Providers: QueryClient → Services → ErrorBoundary → Theme →
+              MotionConfig → Tooltip → (screens) → Toaster
+```
+
+### 13. Диаграмма потоков данных (производственный цикл)
+
+```
+Приём сырья  → warehouse.receiveBatch → Jumbo(onStock) + операция «Приход»
+Начало работы→ warehouse.startUsage   → Jumbo(inWork)  + «Начало использования»
+Расчёт+заказ → calculation.calculate (движок) → warehouse.completeCalculation
+              (транзакция: списание остатка, CuttingSession, аккумуляторы, аудит)
+Остаток<300  → becameWriteOff → Jumbo(toWriteOff)
+Закрытие     → warehouse.closeJumbo → ArchivedJumbo(снимок+статистика)+Waste
+Отчёты       → ReportContext (агрегация 1×) → builders → ReportData → PDF/Email
+Аналитика    → KpiEngine(ReportContext) → кэш → Dashboard/AnalyticsCenter
+Копия        → backup.createBackup (снимок всех ключей) ⇄ restore
+```
+
+### Результаты архитектурного аудита
+
+SOLID/DRY/KISS/MVVM/Repository/DI — соблюдены. Дублирование агрегаций устранено
+ещё на Этапе 7 (единый `KpiEngine`); на Этапе 9 удалена мёртвая обвязка
+сервисов. Расширяемость обеспечена реестрами (builders, export/email providers,
+storage/export providers, роли пользователей) — новое подключается без правки
+существующего кода.
+
+### Результаты тестирования
+
+Прогон harness (in-memory store) — **28/28**:
+
+- Пустая база: диагностика, целостность, генерация отчёта, backup/restore.
+- Полный цикл: приём → склад → начало работы → несколько расчётов → переход
+  <300 м (write-off) → закрытие → архив → отчёт (Джамб + производство) →
+  диагностика → целостность → восстановление.
+- Edge-cases: очень длинные названия, невалидные e-mail (разделение), фильтры
+  на границе года и пустой будущий период.
+- Масштаб: 10 000 Джамбов + 100 000 операций — корректные счётчики и время
+  диагностики/скана/копии в пределах порогов.
+
+Совокупно за все этапы автотестами покрыты расчёт, склад, полный жизненный цикл
+Джамба, отчёты (7 видов), PDF/e-mail, аналитика/KPI и администрирование.
+
+### Перечень исправленных проблем (Этап 9)
+
+- Мёртвые сервисы и DI-поля (ReportService/EmailService/EmailQueue) — удалены.
+- Осиротевший ключ хранилища `emailQueue` — удалён.
+- Устаревшие строки и копия «на следующем этапе» — вычищены/переписаны.
+- Ошибки отрисовки React нигде не логировались — добавлены ErrorBoundary +
+  краш-лог.
+- Анимации игнорировали Reduce Motion; не было high-contrast/forced-colors —
+  добавлены.
+- `maximum-scale=1` блокировал pinch-zoom (анти-паттерн доступности) — снят.
+- Отсутствовали PWA-манифест, `<title>`, корректные meta; висел вендорный
+  og/twitter-мусор — исправлено.
+
+### Рекомендации по дальнейшему развитию
+
+- Реализовать заготовки: облачная синхронизация/многопользовательский режим,
+  экспорт CSV/Excel, импорт сырья/справочников, биометрия, автобэкап по
+  расписанию, миграции по `DB_VERSION`.
+- Наполнить английскую локаль и добавить переключатель языка в настройках.
+- Самостоятельные иконки 192/512 (maskable) и офлайн Service Worker для полного
+  PWA-офлайна; самостоятельный хостинг шрифтов.
+- Перенести хранилище на IndexedDB при росте объёмов (протокол уже готов).
+
+### Итоговая оценка готовности
+
+Приложение функционально завершено и **готово к ежедневной эксплуатации на
+производстве**: полный цикл работает и покрыт тестами, данные целостны и
+резервируются, сбои журналируются, интерфейс доступен в Light/Dark/высоком
+контрасте и масштабируется по размеру шрифта. Проект собирается в production
+без предупреждений (все чанки < 500 КБ), `tsc` — 0 ошибок, движок расчёта не
+изменён. Для публикации именно в App Store как нативного приложения потребуется
+обёртка (Capacitor/PWA-упаковка) и материалы стора; как PWA приложение готово к
+установке. Прочие пункты (облако, CSV/Excel, английский перевод) оформлены как
+расширяемые заготовки и не блокируют эксплуатацию.
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений; все чанки < 500 КБ.
+- Harness (in-memory) — **28/28** (пустая база, полный цикл, edge-cases, масштаб).
+- Движок расчёта идентичен `main` (диф пуст).
+
+---
+
 ## Этап 8 — Администрирование, безопасность, резервное копирование и подготовка к масштабированию
 
 > Изменения **аддитивны**: существующие модели, сервисы и алгоритм расчёта

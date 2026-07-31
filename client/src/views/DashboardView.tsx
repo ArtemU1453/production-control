@@ -9,6 +9,7 @@ import {
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResponsiveGrid } from "@/app/layout";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/core/theme/ThemeManager";
 import { icons, type IconName } from "@/resources/icons";
@@ -81,6 +82,7 @@ export function DashboardView() {
     <ScreenScaffold
       title={strings.dashboard.title}
       subtitle={strings.dashboard.subtitle}
+      wide
       toolbar={
         <Button
           variant="secondary"
@@ -94,6 +96,7 @@ export function DashboardView() {
       }
     >
       <div className="space-y-4">
+        <ResponsiveGrid min={340} className="items-start">
         <CardView
           title="Склад сырья"
           icon={icons.warehouse}
@@ -176,8 +179,9 @@ export function DashboardView() {
             </div>
           )}
         </CardView>
+        </ResponsiveGrid>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ResponsiveGrid min={230}>
           <DashboardCard title="Производство" subtitle="Новый заказ по Джамбу" icon="gauge" href="/production" />
           <DashboardCard title="Быстрый расчёт" subtitle="Свободный калькулятор" icon="quick" href="/calculator" tone="accent" />
           <DashboardCard title="Материалы" subtitle={`Материалов: ${materialsCount}`} icon="material" href="/materials" />
@@ -191,7 +195,7 @@ export function DashboardView() {
           <DashboardCard title="Отчёты" subtitle="Формирование отчётов" icon="reports" href="/reports" />
           <DashboardCard title="Документы" subtitle="PDF и рассылка" icon="reports" href="/documents" tone="accent" />
           <DashboardCard title="Настройки" subtitle="Профиль и оформление" icon="settings" href="/settings" />
-        </div>
+        </ResponsiveGrid>
       </div>
     </ScreenScaffold>
   );

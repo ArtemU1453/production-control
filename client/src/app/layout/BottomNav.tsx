@@ -6,18 +6,25 @@ function isActive(current: string, path: string): boolean {
   return path === "/" ? current === "/" : current.startsWith(path);
 }
 
-/** Bottom tab bar. Fixed to the safe-area bottom, it mirrors a native TabView
- *  and drives navigation across the app's primary sections. */
-export function TabBar() {
+/**
+ * BottomNav — the mobile / tablet primary navigation.
+ *
+ * Part of the unified {@link AppLayout}: it is `fixed` to the safe-area bottom
+ * and shown only below `lg` (desktop uses the Sidebar instead). The layout
+ * reserves matching bottom padding on the scroll area, so content is never
+ * hidden behind it. Marked `data-app-chrome` so print/PDF drops it.
+ */
+export function BottomNav() {
   const [location] = useLocation();
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 backdrop-blur-xl"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      data-app-chrome
       aria-label="Основная навигация"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/85 backdrop-blur-xl lg:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="mx-auto flex w-full max-w-[560px] items-stretch justify-between px-2">
+      <div className="mx-auto flex w-full max-w-[640px] items-stretch justify-between px-2">
         {tabs.map((tab) => {
           const Icon = iconFor(tab.icon);
           const active = isActive(location, tab.path);

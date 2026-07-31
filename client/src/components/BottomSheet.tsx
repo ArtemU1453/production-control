@@ -43,7 +43,12 @@ export function BottomSheet({ open, onOpenChange, trigger, title, description, c
             ) : null}
           </DrawerHeader>
         ) : null}
-        <div className={cn(AppSpacing.padX.sm, "pb-8")}>{children}</div>
+        <div
+          className={AppSpacing.padX.sm}
+          style={{ paddingBottom: "max(2rem, calc(1rem + env(safe-area-inset-bottom)))" }}
+        >
+          {children}
+        </div>
       </DrawerContent>
     </Drawer>
   );

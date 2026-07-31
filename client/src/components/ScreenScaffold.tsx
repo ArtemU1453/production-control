@@ -10,6 +10,13 @@ interface ScreenScaffoldProps {
   toolbar?: ReactNode;
   children: ReactNode;
   className?: string;
+  /**
+   * Wide layout: removes the standard mobile-width column cap so the screen can
+   * use the full viewport on large displays. Opt-in — every screen keeps the
+   * default 560px reading column unless it sets this. Used by the production
+   * calculator, whose visualisation-first layout needs desktop width.
+   */
+  wide?: boolean;
 }
 
 /**
@@ -24,10 +31,16 @@ export function ScreenScaffold({
   toolbar,
   children,
   className,
+  wide = false,
 }: ScreenScaffoldProps) {
   return (
     <div className={cn("min-h-dvh", surfaces.screenBackground)}>
-      <div className="app-safe mx-auto w-full max-w-[560px] pb-24">
+      <div
+        className={cn(
+          "app-safe mx-auto w-full pb-24",
+          wide ? "max-w-[1600px]" : "max-w-[560px]",
+        )}
+      >
         <header className="px-4 pt-4">
           <div className="flex items-start justify-between gap-3">
             <div>

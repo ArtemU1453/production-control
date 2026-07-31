@@ -1,3 +1,4 @@
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { Lightbulb } from "lucide-react";
 import {
   Form,
@@ -9,255 +10,334 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import {
-  CardView,
-  InfoRow,
-  MetricCard,
-  ScreenScaffold,
-  StatusBadge,
-} from "@/components";
+import { CardView, ScreenScaffold } from "@/components";
+import { cn } from "@/lib/utils";
 import { icons } from "@/resources/icons";
 import { strings } from "@/resources/strings";
-import { formatHours } from "@/extensions/number";
+import { AppTypography } from "@/designsystem";
+import { haptics } from "@/designsystem/haptics";
+import { useToast } from "@/hooks/use-toast";
 import { useCalculatorViewModel } from "@/viewmodels";
-import { CuttingScheme } from "./calculator/CuttingScheme";
+import { calculatorDefaults, type CalculatorFormValues } from "@/viewmodels/calculatorSchema";
+import {
+  buildCuttingModel,
+  CuttingVisualizer,
+  InfoPanels,
+  JumboLengthGauge,
+  KpiPanel,
+  ResultTable,
+  SessionHistory,
+  type CalcSessionEntry,
+  type StripeKind,
+} from "./calculator";
 
-/** The free (standalone) cutting calculator. All computation flows through the
- *  ViewModel, which preserves the original engine behaviour exactly. Production
- *  runs that consume a Jumbo use the Production screen instead. */
+/** Analytics charts are lazy-loaded so Recharts ships only once results exist. */
+const CuttingCharts = lazy(() => import("./calculator/CuttingCharts"));
+
+const INPUT_CLASS = "rounded-xl";
+
+/**
+ * CalculatorView — the production cutting screen, rebuilt as a visualisation-led
+ * operator console. It is a pure presentation layer over
+ * {@link useCalculatorViewModel}: the live plan comes from the unchanged
+ * Calculation Engine, and every panel here only *renders* that result. The
+ * layout is fully responsive — a sticky input rail beside a central
+ * visualisation on desktop, collapsing to a single vertical flow on mobile.
+ */
 export function CalculatorView() {
   const { form, plan, errorMsg, applyAdditionalWidth } = useCalculatorViewModel();
+  const { toast } = useToast();
 
-  const inputClass =
-    "rounded-2xl bg-emerald-950/20 border-emerald-800/30 focus-visible:ring-emerald-500/30";
+  const values = form.watch();
+  const model = useMemo(() => (plan ? buildCuttingModel(plan) : null), [plan]);
+
+  const [activeKind, setActiveKind] = useState<StripeKind | null>(null);
+  const [entries, setEntries] = useState<CalcSessionEntry[]>([]);
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  const revealResult = useCallback(() => {
+    resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const onCalculate = useCallback(() => {
+    void form.trigger();
+    if (plan) {
+      haptics.success();
+      revealResult();
+    } else {
+      haptics.warning();
+    }
+  }, [form, plan, revealResult]);
+
+  const onClear = useCallback(() => {
+    form.reset(calculatorDefaults);
+    setActiveKind(null);
+    haptics.selection();
+  }, [form]);
+
+  const onSave = useCallback(() => {
+    if (!plan) {
+      return;
+    }
+    const entry: CalcSessionEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      at: Date.now(),
+      values: { ...values },
+      summary: {
+        materialWidthMm: plan.material_width_mm,
+        rollWidthMm: plan.roll_width_mm,
+        rollLengthM: plan.roll_length_m,
+        orderRolls: plan.order_rolls,
+        wastePercent: plan.waste_percent,
+        totalRolls: plan.total_rolls,
+        remainingJumboM: plan.remaining_jumbo_m,
+      },
+    };
+    setEntries((prev) => [entry, ...prev].slice(0, 8));
+    haptics.success();
+    toast({ title: "Сохранено", description: "Расчёт добавлен в историю сессии." });
+  }, [plan, values, toast]);
+
+  const onPdf = useCallback(() => {
+    if (!plan) {
+      return;
+    }
+    haptics.selection();
+    window.print();
+  }, [plan]);
+
+  const onRepeat = useCallback(
+    (v: CalculatorFormValues) => {
+      form.reset(v);
+      setActiveKind(null);
+      haptics.selection();
+      revealResult();
+    },
+    [form, revealResult],
+  );
+
+  const recommended = plan?.optimal_additional_rolls?.[0];
 
   return (
-    <ScreenScaffold title={strings.calculator.title}>
+    <ScreenScaffold
+      title={strings.calculator.title}
+      subtitle="Производственный расчёт раскроя Джамбы"
+      wide
+    >
       <div className="space-y-4">
-        <CardView title={strings.calculator.materialSection} icon={icons.cut} animate>
-          <Form {...form}>
-            <form className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="materialWidthMm"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ширина, мм</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" type="number" className={inputClass} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="bigRollLengthM"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Намотка Джамба, м</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" type="number" className={inputClass} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+        <div className="grid gap-4 xl:grid-cols-12">
+          {/* ── Input rail ─────────────────────────────────────────────── */}
+          <aside
+            data-no-print
+            className="order-1 xl:col-span-4 xl:sticky xl:top-4 xl:self-start"
+          >
+            <CardView title="Параметры" icon={icons.cut} animate>
+              <Form {...form}>
+                <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+                  <div className={cn(AppTypography.caption2, "text-muted-foreground")}>Материал</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="materialWidthMm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Ширина, мм</FormLabel>
+                          <FormControl>
+                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="bigRollLengthM"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Намотка Джамба, м</FormLabel>
+                          <FormControl>
+                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-              <FormField
-                control={form.control}
-                name="orderRolls"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Заказ, шт</FormLabel>
-                    <FormControl>
-                      <Input {...field} inputMode="numeric" type="number" className={inputClass} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={form.control}
+                    name="orderRolls"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Заказ, шт</FormLabel>
+                        <FormControl>
+                          <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              {/* Useful width is derived from material width; kept in the form
-                  for validation but not user-editable. */}
-              <div className="hidden">
-                <FormField
-                  control={form.control}
-                  name="usefulWidthMm"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input {...field} type="hidden" />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
+                  {/* Useful width is derived from material width; kept in the
+                      form for validation but not user-editable. */}
+                  <div className="hidden">
+                    <FormField
+                      control={form.control}
+                      name="usefulWidthMm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input {...field} type="hidden" />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-              <Separator className="my-2" />
+                  <Separator />
 
-              <div className="text-sm font-semibold">{strings.calculator.rollSection}</div>
+                  <div className={cn(AppTypography.caption2, "text-muted-foreground")}>Готовый рулон</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="rollWidthMm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Ширина, мм</FormLabel>
+                          <FormControl>
+                            <Input {...field} inputMode="decimal" type="number" step="0.1" className={INPUT_CLASS} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="rollLengthM"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Длина, м</FormLabel>
+                          <FormControl>
+                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="rollWidthMm"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ширина, мм</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="decimal" type="number" step="0.1" className="rounded-2xl" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="rollLengthM"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Длина, м</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" type="number" className="rounded-2xl" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                  <FormField
+                    control={form.control}
+                    name="additionalWidthMm"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Фиксированный доп. размер (опц.), мм</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value ?? ""}
+                            inputMode="decimal"
+                            type="number"
+                            step="0.1"
+                            className={INPUT_CLASS}
+                            placeholder="Автоматически"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </form>
+              </Form>
+            </CardView>
+          </aside>
 
-              <FormField
-                control={form.control}
-                name="additionalWidthMm"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Фиксированный доп. размер (опц.), мм</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value ?? ""}
-                        inputMode="decimal"
-                        type="number"
-                        step="0.1"
-                        className="rounded-2xl"
-                        placeholder="Автоматически"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </form>
-          </Form>
-        </CardView>
+          {/* ── Main column: summary band, hero visualisation, KPI ──────── */}
+          <div className="order-2 space-y-4 xl:col-span-8">
+            <InfoPanels
+              values={values}
+              plan={plan}
+              model={model}
+              errorMsg={errorMsg}
+              onCalculate={onCalculate}
+              onClear={onClear}
+              onSave={onSave}
+              onPdf={onPdf}
+            />
 
-        <CardView
-          title={strings.calculator.results}
-          icon={icons.dashboard}
-          headerTone="accent"
-          headerTrailing={
-            plan ? (
-              <StatusBadge
-                label={`Отход: ${plan.waste_percent.toFixed(1)}%`}
-                tone={plan.waste_percent > 7 ? "danger" : "neutral"}
-              />
-            ) : (
-              <StatusBadge label="Ошибка" tone="danger" />
-            )
-          }
-          animate
-        >
-          {errorMsg ? (
-            <div className="text-sm text-destructive">{errorMsg}</div>
-          ) : plan ? (
-            <div className="space-y-4">
-              <CuttingScheme plan={plan} />
-
-              <div className="grid grid-cols-2 gap-3">
-                <MetricCard
-                  label="Ручьёв осн."
-                  icon={icons.material}
-                  value={plan.main_count}
-                  hint={`Ширина: ${plan.roll_width_mm} мм`}
-                />
-                <MetricCard
-                  label="Ручьёв доп."
-                  icon={icons.material}
-                  value={plan.additional_width_mm ? 1 : 0}
-                  hint={
-                    plan.additional_width_mm
-                      ? `Ширина: ${plan.additional_width_mm} мм`
-                      : "Нет доп. размера"
-                  }
-                />
-              </div>
-
-              {(() => {
-                const recommended = plan.optimal_additional_rolls?.[0];
-                if (!recommended) {
-                  return null;
-                }
-                return (
-                  <div className="rounded-xl border border-orange-200/50 bg-orange-50/50 p-3 dark:border-orange-800/30 dark:bg-orange-900/10">
-                    <div className="flex items-start gap-2">
-                      <Lightbulb className="mt-0.5 h-4 w-4 text-orange-500" />
-                      <div className="text-sm">
-                        <div className="font-medium text-orange-700 dark:text-orange-400">
-                          Оптимизация отхода
-                        </div>
-                        <div className="mt-1 text-orange-600/80 dark:text-orange-400/80">
-                          Отход более 7%. Рекомендуемый доп. размер:{" "}
-                          <button
-                            type="button"
-                            className="cursor-pointer font-bold underline decoration-dotted"
-                            onClick={() => applyAdditionalWidth(recommended.width)}
-                          >
-                            {recommended.width} мм
-                          </button>{" "}
-                          ({recommended.count} шт.)
+            <div ref={resultRef} className="scroll-mt-4 space-y-4">
+              {plan && model ? (
+                <>
+                  <CardView animate>
+                    <CuttingVisualizer
+                      model={model}
+                      activeKind={activeKind}
+                      onActiveKindChange={setActiveKind}
+                    />
+                    <Separator className="my-4" />
+                    <JumboLengthGauge plan={plan} />
+                    {recommended ? (
+                      <div className="mt-4 rounded-2xl border border-orange-200/50 bg-orange-50/50 p-3 dark:border-orange-800/30 dark:bg-orange-900/10">
+                        <div className="flex items-start gap-2">
+                          <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" aria-hidden />
+                          <div className={AppTypography.footnote}>
+                            <div className="font-semibold text-orange-700 dark:text-orange-400">
+                              Оптимизация отхода
+                            </div>
+                            <div className="mt-1 text-orange-600/80 dark:text-orange-400/80">
+                              Отход более 7%. Рекомендуемый доп. размер:{" "}
+                              <button
+                                type="button"
+                                className="cursor-pointer font-bold underline decoration-dotted"
+                                onClick={() => applyAdditionalWidth(recommended.width)}
+                              >
+                                {recommended.width} мм
+                              </button>{" "}
+                              ({recommended.count} шт.)
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })()}
+                    ) : null}
+                  </CardView>
 
-              <div className="space-y-2">
-                <InfoRow label="Всего рулонов осн.:" value={`${plan.total_main_rolls} шт.`} />
-                <InfoRow
-                  label="Излишек / Нехватка:"
-                  value={
-                    <span className="text-destructive">
-                      {plan.surplus_main_rolls} / {plan.shortage_rolls}
-                    </span>
-                  }
-                />
-                <InfoRow label="Доп. рулонов:" value={`${plan.total_additional_rolls} шт.`} />
-                <InfoRow
-                  label="Отход на кромки (с 1 стороны):"
-                  value={`${plan.waste_per_side_mm.toFixed(1)} мм`}
-                />
-                <InfoRow label="Циклов (прогонов):" value={plan.cycles_used} />
-                <InfoRow label="Остаток Джамба:" value={`${plan.remaining_jumbo_m} м`} />
-                {plan.shortage_rolls > 0 && (
-                  <>
-                    <InfoRow label="Не хватает циклов:" value={plan.shortage_cycles} danger />
-                    <InfoRow label="Не хватает метров:" value={`${plan.shortage_length_m} м`} danger />
-                  </>
-                )}
-                {plan.estimated_hours && (
-                  <InfoRow label="Примерное время:" value={formatHours(plan.estimated_hours)} last />
-                )}
-              </div>
+                  <KpiPanel plan={plan} model={model} />
+                </>
+              ) : (
+                <CardView animate>
+                  <div className={cn(AppTypography.footnote, "py-8 text-center text-muted-foreground")}>
+                    {errorMsg ?? "Введите корректные параметры, чтобы увидеть визуализацию раскроя."}
+                  </div>
+                </CardView>
+              )}
             </div>
-          ) : (
-            <div className="py-4 text-center text-sm text-muted-foreground">
-              Введите корректные данные
-            </div>
-          )}
+          </div>
+        </div>
+
+        {/* ── Details: results grid + analytics ──────────────────────── */}
+        {plan && model ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CardView title="Таблица результатов" icon={icons.dashboard} animate>
+              <ResultTable
+                plan={plan}
+                model={model}
+                activeKind={activeKind}
+                onActiveKindChange={setActiveKind}
+              />
+            </CardView>
+            <CardView title="Аналитика" icon={icons.analytics} animate>
+              <Suspense
+                fallback={<div className="h-52 animate-pulse rounded-2xl bg-muted/40" aria-hidden />}
+              >
+                <CuttingCharts plan={plan} />
+              </Suspense>
+            </CardView>
+          </div>
+        ) : null}
+
+        {/* ── Session history ────────────────────────────────────────── */}
+        <CardView title="История расчётов" icon={icons.history} animate>
+          <SessionHistory entries={entries} onRepeat={onRepeat} onClear={() => setEntries([])} />
         </CardView>
       </div>
     </ScreenScaffold>

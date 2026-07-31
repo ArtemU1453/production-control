@@ -1,0 +1,73 @@
+# 10–11. Отчёты и KPI
+
+## Формирование отчётов (Report Center)
+
+Модуль `reports/`. Единый агрегатор `ReportRepository` один раз загружает все
+нужные коллекции (`Promise.all`) и собирает `ReportContext`. Построители
+отчётов (реестр builders) получают контекст и фильтр и возвращают `ReportData`.
+
+### Виды отчётов (`ReportKind`)
+
+`production` (производство), `orders` (заказы), `jumbos` (Джамбы, включая
+архив), `stock` (склад), `operators` (операторы), `machines` (станки),
+`materials` (материалы). Новый вид добавляется регистрацией построителя —
+существующий код не меняется (Open/Closed).
+
+### ReportData
+
+`id`, `kind`, `title`, `generatedAt`, `period`, `filter`, `table`
+(`columns[]` + `rows[]`), `summary` (итоговые показатели), `metadata`.
+
+### Фильтры, группировка, сортировка
+
+`ReportFilter` — период (`startDate`/`endDate`), материал, оператор, станок,
+заказчик; поддерживаются группировка и сортировка. Пустой/будущий период даёт
+пустую таблицу без ошибок (проверено harness).
+
+### Кэширование
+
+`ReportCache` кэширует результат по ключу «фильтр + сигнатура данных». Пока
+данные не изменились, повторная генерация не выполняет вычислений; любая
+складская операция меняет сигнатуру и инвалидирует кэш.
+
+### Экспорт
+
+`exporter` и `emailProvider`: экспорт в PDF (печать HTML) и отправка e-mail
+реализованы; CSV/Excel — заготовки под будущие версии.
+
+## KPI
+
+Модуль `analytics/`. `KpiEngine` — набор **чистых функций** над
+`ReportContext` (тот же агрегатор, что и у отчётов), без доступа к хранилищу и
+без пересчёта истории. `AnalyticsService.overview(filter?)` загружает данные
+один раз, кэширует `AnalyticsOverview` и переиспользуется Dashboard — расчёты
+не дублируются.
+
+### AnalyticsOverview
+
+- **production** (`ProductionKpi`): `orders`, `rolls`, `materialUsedM`,
+  `usefulAreaM2`, `wasteAreaM2`, `scrapAreaM2`, `totalLossesM2`,
+  `avgUsagePercent`, `avgPerOrderM`, `avgPerRollM`.
+- **jumbos** (`JumboAnalytics`): количество по статусам, средняя площадь,
+  средний остаток, средний % использования.
+- **operators / machines / materials**: таблицы показателей.
+- **rankings**: ТОП материалов, операторов, заказчиков, причин брака.
+- **trend**: точки динамики по бакетам (день/неделя/месяц/квартал/год).
+
+`comparison(kind)` — сравнение периодов (сегодня/вчера, месяц/прошлый месяц,
+год/прошлый год) с процентом изменения.
+
+### Формулы (ключевые)
+
+- `materialUsedM = Σ used_length_m` по сессиям.
+- `usefulAreaM2 = Σ useful_area_m2`.
+- `avgUsagePercent = usefulArea / обработанная_площадь × 100`.
+- `waste/scrap/totalLosses` — суммы замороженной статистики архива за период.
+- `avgPerOrderM = materialUsedM / orders`, `avgPerRollM = materialUsedM / rolls`.
+- Сравнение: `deltaPercent = (текущий − прошлый) / прошлый × 100`.
+
+### Графики
+
+Строятся на `recharts`, подгружаются лениво (`React.lazy`) и изолированы в
+отдельный чанк, чтобы не утяжелять основной бандл. Тяжёлых вычислений во View
+нет — данные приходят готовыми из `AnalyticsService`.

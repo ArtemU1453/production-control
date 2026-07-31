@@ -37,6 +37,7 @@ import {
   createKpiEngine,
   type AnalyticsService,
 } from "../../analytics";
+import { createAdminCenter, type AdminCenter } from "../../admin";
 
 /**
  * Application composition root.
@@ -67,6 +68,8 @@ export interface AppContainer {
   documents: DocumentsCenter;
   /** Analytics: KPI engine over aggregated data (shared with the Dashboard). */
   analytics: AnalyticsService;
+  /** Administration: logs, users, backup/restore, maintenance, diagnostics. */
+  admin: AdminCenter;
 }
 
 export function createAppContainer(
@@ -115,5 +118,6 @@ export function createAppContainer(
       store,
     }),
     analytics: createAnalyticsService(reportCenter.repository, createKpiEngine()),
+    admin: createAdminCenter(store),
   };
 }

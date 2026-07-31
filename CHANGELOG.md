@@ -1,5 +1,235 @@
 # CHANGELOG
 
+## Этап 8 — Администрирование, безопасность, резервное копирование и подготовка к масштабированию
+
+> Изменения **аддитивны**: существующие модели, сервисы и алгоритм расчёта
+> (`core/calculator/calculatorLogic.ts`) не тронуты — файл движка **байт-в-байт**
+> идентичен `main`. Новый модуль `admin/` подключается одной точкой в
+> композиционном корне (`core/di/container.ts`). Слой хранения остаётся единым
+> (`KeyValueStore`), поэтому облачные бэкенды и многопользовательский режим
+> добавляются без изменения бизнес-логики.
+
+### Главное
+
+Добавлен единый центр администрирования (`admin/`): резервное копирование и
+восстановление, обслуживание базы, журнал ошибок, аудит действий, диагностика,
+подготовка к многопользовательской работе и облачному хранилищу, а также
+архитектура экспорта/импорта. Экран «Настройки» переработан в **хаб** с
+группами и фокусными под-экранами.
+
+### Структура модуля
+
+```
+admin/
+├── models/
+│   ├── User.ts           UserRole (operator/master/admin), User
+│   ├── ErrorLog.ts       ErrorLogEntry
+│   ├── AuditLog.ts       AuditAction, AuditEntry
+│   ├── Backup.ts         BACKUP_VERSION, BackupData, BackupMeta
+│   ├── Diagnostics.ts    RecordCounts, DiagnosticsInfo
+│   ├── Maintenance.ts    IntegrityIssue/Report, MaintenanceResult
+│   └── index.ts
+├── storage/StorageProvider.ts   протокол хранилища (= KeyValueStore) + local/cloud
+├── repositories/AdminRepositories.ts  error/audit/user поверх CollectionRepository
+├── services/
+│   ├── ErrorLogService.ts     log / list / clear
+│   ├── AuditLogService.ts     record / list / clear
+│   ├── UserService.ts         ensureDefault / list / current / add
+│   ├── BackupService.ts       createBackup / restore / exportJson / importJson / meta
+│   ├── MaintenanceService.ts  checkIntegrity / checkRelations / optimize / rebuild / clearCache
+│   └── DiagnosticsService.ts  DB_VERSION, info()
+├── export/DataExport.ts   JSON (рабочий) + CSV/Excel (заготовки), импорт (заготовки)
+├── adminCenter.ts         createAdminCenter(store) → AdminCenter
+├── viewmodels/            backup, maintenance, diagnostics, logs, users, bootstrap
+├── views/                 SettingsScaffold + 9 под-экранов
+└── index.ts
+```
+
+### Хранилище как протокол (`StorageProvider`)
+
+Всё приложение уже персистит через `KeyValueStore` — значит, **это и есть**
+протокол провайдера хранения. Локальный провайдер активен; облачный
+(iCloud/CloudKit/Firebase/собственный сервер) — заготовка, реализующая тот же
+интерфейс. Переключение бэкенда не затрагивает бизнес-логику.
+
+### Резервное копирование и восстановление
+
+`BackupService` снимает единый JSON-снимок всех коллекций
+(`backupStorageKeys`): Джамбы, материалы, сессии, операции, потери, архив,
+документы, журналы, пользователи, настройки. `restore()` записывает их обратно
+(с проверкой версии копии), `exportJson()/importJson()` работают с файлом
+(скачивание через Blob, импорт через `FileReader`), `isBackupData` защищает от
+некорректного ввода. Каждое копирование/восстановление фиксируется в аудите,
+метки времени хранятся в `backupMeta`.
+
+### Обслуживание базы
+
+`MaintenanceService.scan()` — единая проверка связей: у Джамба существует
+`materialId`; остаток в диапазоне `[0; initialWinding]`; `session.jumboId`,
+`operation.jumboId`, `waste.jumboId` указывают на существующий Джамб (активный
+или архивный). `checkIntegrity()` возвращает полный отчёт, `checkRelations()`
+— только нарушения связей. `optimize/rebuildIndexes/clearCache` для локального
+хранилища — безопасные операции с честным описанием (индексы для KV-хранилища
+не требуются). Проверки **только читают** данные; все действия аудируются.
+
+### Журналы и диагностика
+
+- **Журнал ошибок**: глобальный обработчик (`useAppBootstrap`) ловит
+  `window.onerror` и `unhandledrejection` и пишет в `errorLog` (описание, стек,
+  версия). Экран журналов показывает ошибки и аудит с переключением и очисткой.
+- **Аудит**: аддитивно подключён к ключевым сценариям — расчёт/списание,
+  оприходование партии, редактирование и закрытие Джамба, отправка документа.
+- **Диагностика**: версии приложения и БД (`DB_VERSION`), счётчики записей,
+  оценка размера базы (`TextEncoder` по JSON всех ключей).
+
+### Подготовка к многопользовательскому режиму
+
+Модель `User` с ролями (оператор/мастер/администратор) и `UserService`
+готовы заранее; при первом запуске сеется администратор (`ensureDefault`).
+Схема хранения не меняется при переходе к нескольким пользователям.
+
+### Экспорт/импорт (архитектура)
+
+Провайдеры под общими интерфейсами: экспорт JSON — рабочий, CSV/Excel —
+заготовки (`available:false`); импорт сырья/справочников/настроек — заготовки.
+Новый формат подключается без изменения вызывающего кода.
+
+### Настройки — хаб и под-экраны
+
+`SettingsView` переработан в индекс с группами. Под-экраны (общий
+`SettingsScaffold` с кнопкой «назад»):
+
+- **Основные** — предприятие, оператор, e-mail, тема.
+- **Производство** — порог списания, станки, форматы даты/времени.
+- **Рассылка** — получатели, тема/текст, авто-отправка, расписание.
+- **Безопасность** — PIN (локальная блокировка), биометрия, автоблокировка,
+  подтверждение удаления.
+- **Резервное копирование**, **Обслуживание**, **Диагностика**, **Журналы**,
+  **О приложении** (версия, пользователи, план развития).
+
+`AppSettings` расширены полями производства, безопасности и `autoBackup`
+(значения по умолчанию сохранены, обратная совместимость не нарушена).
+
+### Архитектура (диаграмма)
+
+```
+                 ┌─────────────────────────────────────────┐
+                 │                Views                     │
+                 │  SettingsView (хаб) → 9 под-экранов      │
+                 └───────────────┬─────────────────────────┘
+                                 │ hooks (ViewModels)
+                 ┌───────────────▼─────────────────────────┐
+                 │  admin/viewmodels: backup/maintenance/   │
+                 │  diagnostics/logs/users/bootstrap        │
+                 └───────────────┬─────────────────────────┘
+                                 │ useServices() → AppContainer.admin
+                 ┌───────────────▼─────────────────────────┐
+                 │            AdminCenter                    │
+                 │  errorLog · audit · users · backup ·      │
+                 │  maintenance · diagnostics ·              │
+                 │  export/import · storageProviders         │
+                 └───────────────┬─────────────────────────┘
+                                 │ repositories (CollectionRepository)
+                 ┌───────────────▼─────────────────────────┐
+                 │      KeyValueStore = StorageProvider      │
+                 │   local (активен) │ cloud (заготовка)     │
+                 └───────────────────────────────────────────┘
+```
+
+### Поток данных (резервное копирование / восстановление)
+
+```
+createBackup: backupStorageKeys ─read→ BackupData{version,appVersion,createdAt,data}
+              → backupMeta.lastBackupAt → audit(backup)
+exportJson:   createBackup → JSON.stringify → Blob → download
+restore:      BackupData ─(version ≤ BACKUP_VERSION)→ write каждый ключ
+              → backupMeta.lastRestoreAt → audit(restore)
+importJson:   JSON.parse → isBackupData? → restore
+```
+
+### Поток данных (журнал ошибок)
+
+```
+window.onerror / unhandledrejection ─useAppBootstrap→ errorLog.log(desc,{stack,action})
+              → ErrorLogRepository.save → экран «Журналы» (list, newest-first)
+```
+
+### Новые файлы
+
+```
+admin/models/{User,ErrorLog,AuditLog,Backup,Diagnostics,Maintenance,index}.ts
+admin/storage/StorageProvider.ts
+admin/repositories/AdminRepositories.ts
+admin/services/{ErrorLog,AuditLog,User,Backup,Maintenance,Diagnostics}Service.ts
+admin/export/DataExport.ts
+admin/adminCenter.ts · admin/index.ts
+admin/viewmodels/{useBackupViewModel,useMaintenanceViewModel,useDiagnosticsViewModel,
+                  useLogsViewModel,useUsersViewModel,useAppBootstrap,index}.ts
+admin/views/{SettingsScaffold,GeneralSettingsView,ProductionSettingsView,
+             EmailSettingsView,SecuritySettingsView,BackupView,MaintenanceView,
+             DiagnosticsView,LogsView,AboutView,index}.tsx
+```
+
+### Изменённые файлы
+
+```
+storage/StorageKeys.ts (+errorLogs/auditLogs/users/backupMeta, backupStorageKeys)
+models/Settings.ts (поля производства/безопасности/autoBackup + defaults)
+core/di/container.ts (admin: AdminCenter)
+App.tsx (роуты /settings/*, useAppBootstrap)
+views/SettingsView.tsx (переработан в хаб)
+resources/icons.ts (+security/database/diagnostics/cloud/maintenance/users/error/
+                    download/upload/about/logs/tune), resources/strings.ts (admin)
+viewmodels/{useProductionViewModel,useReceiptViewModel,useJumboDetailViewModel}.ts (аудит)
+documents/viewmodels/useDocumentComposeViewModel.ts (аудит отправки)
+```
+
+### Найденные и устранённые архитектурные проблемы
+
+- **Разрозненность настроек**: единственный экран настроек рос линейно; выделен
+  хаб + фокусные под-экраны с общим `SettingsScaffold`.
+- **Отсутствие точки сборки администрирования**: введён `AdminCenter` — все
+  админ-сервисы конструируются один раз и инжектируются, экраны их не «нюкают».
+- **Дублирование логики размера/связей**: проверки связей вынесены в единый
+  `scan()`, размер БД считается одной функцией по всем ключам.
+- **Необрабатываемые ошибки исчезали**: добавлен глобальный обработчик →
+  журнал ошибок; сбои теперь диагностируемы постфактум.
+- **Готовность к росту не была явной**: протокол хранилища, роли пользователей
+  и провайдеры экспорта/импорта оформлены как точки расширения (Open/Closed).
+
+### Отчёт о техническом состоянии
+
+- Слои: Models → Storage(`KeyValueStore`) → Repositories → Services →
+  Composition(`AppContainer`) → ViewModels(hooks) → Views. Админ-модуль повторяет
+  ту же слоистость и подключается одной строкой в контейнере.
+- Инварианты соблюдены: движок расчёта не изменён (`git diff` пуст); история не
+  пересчитывается (замороженные аккумуляторы), запись в склад транзакционна.
+- Расширяемость: новый формат экспорта, облачный провайдер, роль пользователя,
+  вид проверки целостности добавляются без изменения существующего кода.
+- Границы честно задокументированы: PDF = печать HTML; e-mail = симулированный
+  транспорт; облако/CSV/Excel/импорт/биометрия — заготовки под будущие фазы.
+
+### Планы развития
+
+- Облачная синхронизация и полноценный многопользовательский режим.
+- Экспорт в CSV/Excel и импорт сырья/справочников/настроек.
+- Биометрическая аутентификация и автоблокировка по таймеру.
+- Автоматическое резервное копирование по расписанию.
+- Миграции схемы БД по `DB_VERSION`.
+
+### Проверки
+
+- `npx tsc` — 0 ошибок; `--noUnusedLocals/Parameters` чисто в клиентском коде.
+- `npx vite build` — успешно, без предупреждений; все чанки < 500 КБ (recharts
+  изолирован лениво).
+- Harness (in-memory store) — **33/33**: сеанс пользователя (seed/идемпотентность/
+  current), журнал ошибок, аудит, диагностика (счётчики/размер), целостность
+  (чисто и обнаружение битой связи), резервная копия (round-trip), экспорт/импорт
+  JSON (в т.ч. отклонение мусора), провайдеры экспорта/хранилища, очистка.
+- Движок расчёта идентичен `main` (диф пуст).
+
+---
+
 ## Этап 7 — Производственная аналитика и KPI
 
 > Используются существующие модели (Jumbo, CuttingSession, JumboOperation,

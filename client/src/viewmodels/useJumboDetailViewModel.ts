@@ -13,6 +13,7 @@ import {
   type CloseJumboOutcome,
   type JumboCloseSummary,
 } from "@/services";
+import { AuditAction } from "@/admin";
 
 export interface JumboEdit {
   status: JumboStatus;
@@ -40,7 +41,7 @@ interface JumboDetailViewModel {
 /** ViewModel for the Jumbo detail card: full record, its material and the
  *  operation timeline, plus edit and start-usage actions. */
 export function useJumboDetailViewModel(jumboId: string): JumboDetailViewModel {
-  const { jumbos, materials, warehouse, settings } = useServices();
+  const { jumbos, materials, warehouse, settings, admin } = useServices();
   const [loading, setLoading] = useState(true);
   const [jumbo, setJumbo] = useState<Jumbo | null>(null);
   const [material, setMaterial] = useState<Material | null>(null);
@@ -100,13 +101,21 @@ export function useJumboDetailViewModel(jumboId: string): JumboDetailViewModel {
           },
         );
         setError(null);
+        await admin.audit.record(AuditAction.jumboEdit, {
+          entity: "Джамб",
+          entityId: jumbo.stockNumber,
+          user: current.operator || undefined,
+          details: remainderChanged
+            ? `Остаток: ${edit.currentRemainderM} м`
+            : "Изменение карточки",
+        });
         await load();
         return true;
       } finally {
         setSaving(false);
       }
     },
-    [jumbo, warehouse, settings, load],
+    [jumbo, warehouse, settings, load, admin],
   );
 
   const close = useCallback(
@@ -122,13 +131,19 @@ export function useJumboDetailViewModel(jumboId: string): JumboDetailViewModel {
           operator: current.operator || undefined,
           comment: comment.trim() || undefined,
         });
+        await admin.audit.record(AuditAction.jumboArchive, {
+          entity: "Джамб",
+          entityId: jumbo.stockNumber,
+          user: current.operator || undefined,
+          details: "Джамб закрыт и перенесён в архив",
+        });
         await load();
         return outcome;
       } finally {
         setClosing(false);
       }
     },
-    [jumbo, warehouse, settings, load],
+    [jumbo, warehouse, settings, load, admin],
   );
 
   return {

@@ -48,6 +48,9 @@ export function InfoPanels({
 }: InfoPanelsProps) {
   const yieldPercent =
     plan && plan.total_area_m2 > 0 ? (plan.useful_area_m2 / plan.total_area_m2) * 100 : null;
+  // Placeholder shown while inputs are being edited and no valid plan exists.
+  const DASH = "—";
+  // Mode reflects operator intent (a boolean check — safe on any raw value).
   const mode = values.additionalWidthMm ? "Фиксированный доп." : "Авто-оптимизация";
 
   const statusLabel = !plan
@@ -61,16 +64,16 @@ export function InfoPanels({
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <InfoCard icon={Package} title="Материал / Джамба">
-          <Row label="Ширина" value={formatMm(values.materialWidthMm)} />
-          <Row label="Полезная" value={formatMm(values.usefulWidthMm)} />
-          <Row label="Намотка" value={formatMeters(values.bigRollLengthM)} />
-          <Row label="Остаток" value={plan ? formatMeters(plan.remaining_jumbo_m) : "—"} />
+          <Row label="Ширина" value={plan ? formatMm(plan.material_width_mm) : DASH} />
+          <Row label="Полезная" value={plan ? formatMm(plan.useful_width_mm) : DASH} />
+          <Row label="Намотка" value={plan ? formatMeters(plan.big_roll_length_m) : DASH} />
+          <Row label="Остаток" value={plan ? formatMeters(plan.remaining_jumbo_m) : DASH} />
         </InfoCard>
 
         <InfoCard icon={ClipboardList} title="Заказ">
-          <Row label="Размер рулона" value={formatMm(plan?.roll_width_mm ?? values.rollWidthMm)} />
-          <Row label="Длина рулона" value={formatMeters(values.rollLengthM)} />
-          <Row label="Количество" value={`${values.orderRolls} шт.`} />
+          <Row label="Размер рулона" value={plan ? formatMm(plan.roll_width_mm) : DASH} />
+          <Row label="Длина рулона" value={plan ? formatMeters(plan.roll_length_m) : DASH} />
+          <Row label="Количество" value={plan ? `${plan.order_rolls} шт.` : DASH} />
           <Row label="Режим" value={mode} />
         </InfoCard>
 

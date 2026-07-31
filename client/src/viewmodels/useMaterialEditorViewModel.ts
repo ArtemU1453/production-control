@@ -30,6 +30,12 @@ const emptyDraft: MaterialDraft = {
   status: MaterialStatus.active,
 };
 
+export interface MaterialDeleteResult {
+  ok: boolean;
+  /** Set when deletion is blocked (e.g. the material is still referenced). */
+  message?: string;
+}
+
 interface MaterialEditorViewModel {
   loading: boolean;
   isNew: boolean;
@@ -38,12 +44,13 @@ interface MaterialEditorViewModel {
   saving: boolean;
   setField: <K extends keyof MaterialDraft>(key: K, value: MaterialDraft[K]) => void;
   save: () => Promise<boolean>;
+  remove: () => Promise<MaterialDeleteResult>;
 }
 
 /** ViewModel backing the material create/edit form, including uniqueness and
  *  field validation. Returns `true` from `save` when persistence succeeded. */
 export function useMaterialEditorViewModel(materialId?: string): MaterialEditorViewModel {
-  const { materials: repository } = useServices();
+  const { materials: repository, jumbos, archivedJumbos } = useServices();
   const isNew = !materialId;
   const [loading, setLoading] = useState(!isNew);
   const [draft, setDraft] = useState<MaterialDraft>(emptyDraft);
@@ -126,5 +133,26 @@ export function useMaterialEditorViewModel(materialId?: string): MaterialEditorV
     }
   }, [draft, existing, repository]);
 
-  return { loading, isNew, draft, error, saving, setField, save };
+  const remove = useCallback(async (): Promise<MaterialDeleteResult> => {
+    if (!materialId) {
+      return { ok: false, message: "Материал ещё не сохранён" };
+    }
+    // Referential guard: a material used by any Jumbo (active or archived)
+    // cannot be deleted — that would orphan warehouse records. Offer to archive
+    // the material in the reference book instead.
+    const [activeJumbos, archive] = await Promise.all([jumbos.getAll(), archivedJumbos.getAll()]);
+    const usedByActive = activeJumbos.filter((jumbo) => jumbo.materialId === materialId).length;
+    const usedByArchive = archive.filter((entry) => entry.jumbo.materialId === materialId).length;
+    const usedCount = usedByActive + usedByArchive;
+    if (usedCount > 0) {
+      return {
+        ok: false,
+        message: `Материал используется в ${usedCount} Джамб(ах) и не может быть удалён. Переведите его в архив в справочнике.`,
+      };
+    }
+    await repository.delete(materialId);
+    return { ok: true };
+  }, [materialId, repository, jumbos, archivedJumbos]);
+
+  return { loading, isNew, draft, error, saving, setField, save, remove };
 }

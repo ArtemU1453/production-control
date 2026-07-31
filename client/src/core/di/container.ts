@@ -98,6 +98,7 @@ export function createAppContainer(
       cuttingSessions,
       wastes,
       archivedJumbos,
+      settings,
     ),
     reportCenter,
     documents: createDocumentsCenter({

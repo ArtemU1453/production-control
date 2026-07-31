@@ -33,7 +33,7 @@ function matches(session: CuttingSession, query: string): boolean {
  * records — the main production-history entity — with search and deletion.
  */
 export function useHistoryViewModel(): HistoryViewModel {
-  const { cuttingSessions } = useServices();
+  const { cuttingSessions, warehouse } = useServices();
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [all, setAll] = useState<CuttingSession[]>([]);
@@ -51,18 +51,24 @@ export function useHistoryViewModel(): HistoryViewModel {
     void load();
   }, [load]);
 
+  // Deletion goes through the warehouse service so the source Jumbo's
+  // accumulators and remainder are restored — a raw session delete would leave
+  // the warehouse, reports and KPI counting a removed order.
   const remove = useCallback(
     async (id: string) => {
-      await cuttingSessions.delete(id);
+      await warehouse.deleteSession(id);
       await load();
     },
-    [cuttingSessions, load],
+    [warehouse, load],
   );
 
   const clearAll = useCallback(async () => {
-    await cuttingSessions.clear();
+    const current = await cuttingSessions.getAll();
+    for (const session of current) {
+      await warehouse.deleteSession(session.id);
+    }
     await load();
-  }, [cuttingSessions, load]);
+  }, [cuttingSessions, warehouse, load]);
 
   const sessions = useMemo(
     () => all.filter((session) => matches(session, query)),

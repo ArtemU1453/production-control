@@ -20,6 +20,7 @@ import type {
   CuttingSessionRepository,
   JumboOperationRepository,
   JumboRepository,
+  SettingsRepository,
   WasteRepository,
 } from "../repositories";
 import type { CalcResult } from "../core/calculator/calculatorLogic";
@@ -128,6 +129,11 @@ export interface WarehouseService {
    *  statistics, records an Archive operation and creates the ArchivedJumbo. */
   closeJumbo(params: CloseJumboParams): Promise<CloseJumboOutcome | undefined>;
   operationsFor(jumboId: string): Promise<JumboOperation[]>;
+  /** Removes a production session and its operations, restoring the source
+   *  Jumbo's accumulators and remainder so the warehouse, reports and KPI stay
+   *  consistent. A no-op for an unknown session; the Jumbo is left untouched
+   *  when it has already been archived (its snapshot is frozen). */
+  deleteSession(sessionId: string): Promise<boolean>;
 }
 
 function round1(value: number): number {
@@ -188,7 +194,18 @@ export function createWarehouseService(
   sessions: CuttingSessionRepository,
   wastes: WasteRepository,
   archived: ArchivedJumboRepository,
+  settings?: SettingsRepository,
 ): WarehouseService {
+  /** Write-off threshold: the operator-configured value from Settings, falling
+   *  back to the default when Settings are unavailable. */
+  async function writeOffThresholdM(): Promise<number> {
+    if (!settings) {
+      return LOW_REMAINDER_THRESHOLD_M;
+    }
+    const value = (await settings.load()).jumboThresholdM;
+    return typeof value === "number" && value >= 0 ? value : LOW_REMAINDER_THRESHOLD_M;
+  }
+
   async function saveOperation(
     operation: Omit<JumboOperation, "id" | "timestamp" | "createdAt" | "updatedAt" | "isReverted"> & {
       timestamp?: string;
@@ -307,7 +324,7 @@ export function createWarehouseService(
         const rollsCount = jumbo.rollsCount + result.total_rolls;
         const ordersCount = jumbo.ordersCount + 1;
         const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
-        const becameWriteOff = remainderAfterM < LOW_REMAINDER_THRESHOLD_M;
+        const becameWriteOff = remainderAfterM < (await writeOffThresholdM());
         const status = becameWriteOff ? JumboStatus.toWriteOff : JumboStatus.inWork;
 
         const calcOp = await saveOperation({
@@ -397,7 +414,7 @@ export function createWarehouseService(
         const currentRemainderM = jumbo.currentRemainderM + consumed;
         const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
         const status =
-          currentRemainderM < LOW_REMAINDER_THRESHOLD_M
+          currentRemainderM < (await writeOffThresholdM())
             ? JumboStatus.toWriteOff
             : JumboStatus.inWork;
         await jumbos.save({
@@ -545,6 +562,56 @@ export function createWarehouseService(
 
     async operationsFor(jumboId) {
       return operations.forJumbo(jumboId);
+    },
+
+    async deleteSession(sessionId) {
+      const session = (await sessions.getAll()).find((s) => s.id === sessionId);
+      if (!session) {
+        return false;
+      }
+
+      const sessionOperations = (await operations.getAll()).filter(
+        (operation) => operation.sessionId === sessionId,
+      );
+
+      // Restore the source Jumbo's accumulators, unless it has been archived
+      // (an archived Jumbo is a frozen snapshot and must not be mutated).
+      const jumbo = await jumbos.getById(session.jumboId);
+      if (jumbo && jumbo.status !== JumboStatus.archived) {
+        const calcOp = sessionOperations.find(
+          (operation) => operation.type === JumboOperationType.calculation,
+        );
+        const consumed = calcOp?.usedLengthDeltaM ?? 0;
+        const usedLength = Math.max(0, jumbo.usedLength - consumed);
+        const usefulArea = Math.max(0, jumbo.usefulArea - (calcOp?.usefulAreaDeltaM2 ?? 0));
+        const rollsCount = Math.max(0, jumbo.rollsCount - (calcOp?.rollsCount ?? 0));
+        const ordersCount = Math.max(0, jumbo.ordersCount - 1);
+        const currentRemainderM = Math.min(
+          jumbo.initialWindingM,
+          jumbo.currentRemainderM + consumed,
+        );
+        const efficiency = computeEfficiency(usefulArea, usedLength, jumbo.widthMm);
+        const status =
+          currentRemainderM < (await writeOffThresholdM())
+            ? JumboStatus.toWriteOff
+            : JumboStatus.inWork;
+        await jumbos.save({
+          ...jumbo,
+          usedLength,
+          usefulArea,
+          rollsCount,
+          ordersCount,
+          currentRemainderM,
+          efficiency,
+          status,
+        });
+      }
+
+      for (const operation of sessionOperations) {
+        await operations.delete(operation.id);
+      }
+      await sessions.delete(sessionId);
+      return true;
     },
   };
 }

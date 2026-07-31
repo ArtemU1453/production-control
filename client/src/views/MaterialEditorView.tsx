@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { CardView, LoadingView, PrimaryButton, ScreenScaffold } from "@/components";
-import { useServices } from "@/core/di/AppServices";
+import { useToast } from "@/hooks/use-toast";
 import { icons } from "@/resources/icons";
 import { MaterialStatus, MATERIAL_CODE_LENGTH } from "@/models";
 import { useMaterialEditorViewModel } from "@/viewmodels";
@@ -26,7 +26,7 @@ import { useMaterialEditorViewModel } from "@/viewmodels";
  *  deletion of an existing record. */
 export function MaterialEditorView({ materialId }: { materialId?: string }) {
   const vm = useMaterialEditorViewModel(materialId);
-  const { materials: repository } = useServices();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const onSave = async () => {
@@ -36,9 +36,11 @@ export function MaterialEditorView({ materialId }: { materialId?: string }) {
   };
 
   const onDelete = async () => {
-    if (materialId) {
-      await repository.delete(materialId);
+    const result = await vm.remove();
+    if (result.ok) {
       navigate("/materials");
+    } else if (result.message) {
+      toast({ title: "Удаление невозможно", description: result.message, variant: "destructive" });
     }
   };
 

@@ -4,6 +4,7 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { haptics } from "@/designsystem"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -141,6 +142,16 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+
+  // Central haptic feedback for significant outcomes: destructive toasts
+  // (errors, validation/send failures, alerts) buzz as a warning; every other
+  // toast marks a completed action (save, cutting done, report sent) as success.
+  // Toasts are deliberate feedback events, never per-tap, so this stays subtle.
+  if (props.variant === "destructive") {
+    haptics.warning()
+  } else {
+    haptics.success()
+  }
 
   const update = (props: ToasterToast) =>
     dispatch({

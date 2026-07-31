@@ -1,0 +1,204 @@
+import type { CalcResult } from "@/services";
+
+/**
+ * cuttingModel — a **pure, presentational** derivation of the cutting layout
+ * from an existing {@link CalcResult}.
+ *
+ * IMPORTANT: this module performs no engineering math. It only *arranges* values
+ * the Calculation Engine already produced (widths, counts, waste-per-side,
+ * lengths, areas) into shapes the visualisation and the results grid can render,
+ * plus purely geometric display ratios (a stripe's share of the material width,
+ * a single roll's area = width × length). No new formulas, no duplicated engine
+ * logic. Every figure that carries production meaning comes verbatim from the
+ * engine result.
+ */
+
+export type StripeKind = "main" | "additional" | "waste";
+
+/** A single vertical band in the cross-section visualisation. */
+export interface Stripe {
+  id: string;
+  kind: StripeKind;
+  /** Physical width in millimetres (from the engine result). */
+  widthMm: number;
+  /** Share of the total material width, 0…100 — a display ratio only. */
+  widthPercent: number;
+  /** 0-based position across the material, left → right. */
+  position: number;
+  /** 1-based index among strips of the same kind (for labels/shading). */
+  ordinal: number;
+}
+
+/** A grouped row for the results grid, one per stripe kind that is present. */
+export interface StripeGroup {
+  id: StripeKind;
+  /** Human label, e.g. "Основные ручьи". */
+  title: string;
+  widthMm: number;
+  /** Rolls produced across the whole order (engine totals). */
+  totalRolls: number;
+  /** Rolls produced per pass across the width (cross-section count). */
+  perCycle: number;
+  /** Length of a single roll, metres (engine value). */
+  rollLengthM: number;
+  /** Area of one physical roll, m² — geometry only (width × length). */
+  rollAreaM2: number;
+  /** Share of the material width, 0…100 — display ratio only. */
+  widthPercent: number;
+  tone: "primary" | "accent" | "danger";
+  statusLabel: string;
+}
+
+export interface CuttingModel {
+  materialWidthMm: number;
+  usefulWidthMm: number;
+  stripes: Stripe[];
+  groups: StripeGroup[];
+  /** Count of cutting knives (blade positions) implied by the cross-section. */
+  knifeCount: number;
+}
+
+/** Threshold below which a stripe's inline label is hidden (too narrow). */
+export const STRIPE_LABEL_MIN_PERCENT = 6;
+
+/** Tailwind fill class per stripe kind; matches the legend + grid tones. */
+export const STRIPE_FILL: Record<StripeKind, string> = {
+  main: "hsl(var(--primary))",
+  additional: "hsl(var(--accent))",
+  waste: "hsl(var(--destructive))",
+};
+
+/**
+ * Builds the presentational cutting model from an engine result. The stripe
+ * order mirrors the physical cross-section exactly as the original screen drew
+ * it: a trim strip on each edge, `main_count` identical main strips, and an
+ * optional additional strip — the engine centres all leftover width to the
+ * edges (`inner_waste_mm === 0`).
+ */
+export function buildCuttingModel(plan: CalcResult): CuttingModel {
+  const {
+    material_width_mm,
+    useful_width_mm,
+    main_count,
+    roll_width_mm,
+    additional_width_mm,
+    waste_per_side_mm,
+    roll_length_m,
+    total_main_rolls,
+    total_additional_rolls,
+  } = plan;
+
+  const pct = (widthMm: number) =>
+    material_width_mm > 0 ? (widthMm / material_width_mm) * 100 : 0;
+  const rollArea = (widthMm: number) =>
+    Math.round(((widthMm / 1000) * roll_length_m) * 100) / 100;
+
+  const stripes: Stripe[] = [];
+  let position = 0;
+  const hasWaste = waste_per_side_mm > 0.01;
+
+  if (hasWaste) {
+    stripes.push({
+      id: "waste-left",
+      kind: "waste",
+      widthMm: waste_per_side_mm,
+      widthPercent: pct(waste_per_side_mm),
+      position: position++,
+      ordinal: 1,
+    });
+  }
+
+  for (let i = 0; i < main_count; i++) {
+    stripes.push({
+      id: `main-${i}`,
+      kind: "main",
+      widthMm: roll_width_mm,
+      widthPercent: pct(roll_width_mm),
+      position: position++,
+      ordinal: i + 1,
+    });
+  }
+
+  if (additional_width_mm && additional_width_mm > 0) {
+    stripes.push({
+      id: "additional",
+      kind: "additional",
+      widthMm: additional_width_mm,
+      widthPercent: pct(additional_width_mm),
+      position: position++,
+      ordinal: 1,
+    });
+  }
+
+  if (hasWaste) {
+    stripes.push({
+      id: "waste-right",
+      kind: "waste",
+      widthMm: waste_per_side_mm,
+      widthPercent: pct(waste_per_side_mm),
+      position: position++,
+      ordinal: 2,
+    });
+  }
+
+  const groups: StripeGroup[] = [];
+
+  if (main_count > 0) {
+    groups.push({
+      id: "main",
+      title: "Основные ручьи",
+      widthMm: roll_width_mm,
+      totalRolls: total_main_rolls,
+      perCycle: main_count,
+      rollLengthM: roll_length_m,
+      rollAreaM2: rollArea(roll_width_mm),
+      widthPercent: pct(roll_width_mm),
+      tone: "primary",
+      statusLabel: "В размер",
+    });
+  }
+
+  if (additional_width_mm && additional_width_mm > 0) {
+    groups.push({
+      id: "additional",
+      title: "Доп. ручей",
+      widthMm: additional_width_mm,
+      totalRolls: total_additional_rolls,
+      perCycle: 1,
+      rollLengthM: roll_length_m,
+      rollAreaM2: rollArea(additional_width_mm),
+      widthPercent: pct(additional_width_mm),
+      tone: "accent",
+      statusLabel: "Доп. размер",
+    });
+  }
+
+  if (hasWaste) {
+    groups.push({
+      id: "waste",
+      title: "Кромка (обрез)",
+      widthMm: waste_per_side_mm,
+      totalRolls: 0,
+      perCycle: 2,
+      rollLengthM: roll_length_m,
+      rollAreaM2: rollArea(waste_per_side_mm),
+      widthPercent: pct(waste_per_side_mm * 2),
+      tone: "danger",
+      statusLabel: "Отход",
+    });
+  }
+
+  // Knives sit between adjacent cut strips (main + additional). Two trimmed
+  // edges add two outer blade positions. This is a count of the boundaries in
+  // the arrangement above — not an engine quantity.
+  const cutStrips = main_count + (additional_width_mm && additional_width_mm > 0 ? 1 : 0);
+  const knifeCount = cutStrips > 0 ? cutStrips + 1 : 0;
+
+  return {
+    materialWidthMm: material_width_mm,
+    usefulWidthMm: useful_width_mm,
+    stripes,
+    groups,
+    knifeCount,
+  };
+}

@@ -221,3 +221,24 @@
     display: none;
   }
 }
+
+/* Print / "Save as PDF": drop app chrome (bottom navigation, input controls
+   and elements marked data-no-print) and let the results flow full width, so
+   the calculator's visualisation and figures export cleanly. */
+@media print {
+  nav[aria-label="Основная навигация"],
+  [data-no-print] {
+    display: none !important;
+  }
+  .app-safe {
+    max-width: none !important;
+    padding-bottom: 0 !important;
+  }
+  .glass,
+  .noise {
+    box-shadow: none !important;
+  }
+  .noise::before {
+    display: none !important;
+  }
+}

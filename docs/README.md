@@ -32,6 +32,9 @@ PDF/e-mail, аналитика/KPI, администрирование, резе
 | 16 | Сопровождение проекта | [11-maintenance-guide.md](11-maintenance-guide.md) |
 | 17 | Выпуск новых версий | [12-release-guide.md](12-release-guide.md) |
 | 18 | Roadmap | [13-roadmap.md](13-roadmap.md) |
+| + | Design System и UI-компоненты | [14-ui-design-system.md](14-ui-design-system.md) |
+| + | Центр решений (Intelligence, v2.0) | [15-intelligence.md](15-intelligence.md) |
+| + | Release Checklist | [16-release-checklist.md](16-release-checklist.md) |
 
 ## Быстрый старт для разработчика
 

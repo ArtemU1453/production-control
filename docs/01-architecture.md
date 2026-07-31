@@ -69,11 +69,13 @@ QueryClientProvider
 | `documents/` | PDF (печать HTML), e-mail (симуляция), планировщик |
 | `analytics/` | KpiEngine, AnalyticsService, графики (lazy) |
 | `admin/` | журналы, аудит, пользователи, бэкап, обслуживание, диагностика |
+| `intelligence/` | центр решений: уведомления, прогнозы, качество, поиск, интеграции |
 | `app/` | провайдеры, навигация, ErrorBoundary |
-| `components/` | дизайн-система |
+| `designsystem/` | токены (AppTheme/Colors/Typography/…) + haptics — см. [14](14-ui-design-system.md) |
+| `components/` | библиотека UI-компонентов на Design System |
 | `resources/` | строки, i18n, иконки, appInfo |
 
-Циклических зависимостей нет (проверено `madge --circular`, 247 файлов).
+Циклических зависимостей нет (проверено `madge --circular`).
 
 ## Расширяемость (Open/Closed)
 

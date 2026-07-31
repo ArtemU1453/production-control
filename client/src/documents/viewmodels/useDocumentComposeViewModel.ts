@@ -8,6 +8,7 @@ import {
 } from "@/reports";
 import type { GeneratedDocument, PdfDocument } from "../models";
 import { parseAddresses, partitionAddresses } from "../email/EmailValidation";
+import { AuditAction } from "@/admin";
 
 interface DocumentComposeViewModel {
   loading: boolean;
@@ -31,7 +32,7 @@ interface DocumentComposeViewModel {
 /** ViewModel for manual document composition: pick report type, period and
  *  recipients, preview the PDF, then generate and send it. */
 export function useDocumentComposeViewModel(): DocumentComposeViewModel {
-  const { documents: center, settings } = useServices();
+  const { documents: center, settings, admin } = useServices();
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<ReportKind>(ReportKind.production);
   const [startDate, setStartDate] = useState("");
@@ -93,17 +94,23 @@ export function useDocumentComposeViewModel(): DocumentComposeViewModel {
     setSending(true);
     setError(null);
     try {
-      return await center.service.generateAndSend({
+      const generated = await center.service.generateAndSend({
         kind,
         filter: filter(),
         recipients: parsed,
         cc,
         bcc,
       });
+      await admin.audit.record(AuditAction.reportSend, {
+        entity: "Документ",
+        entityId: generated.id,
+        details: `${generated.title} → ${parsed.length} получ.`,
+      });
+      return generated;
     } finally {
       setSending(false);
     }
-  }, [center, kind, filter, recipients, cc, bcc]);
+  }, [center, kind, filter, recipients, cc, bcc, admin]);
 
   return {
     loading,

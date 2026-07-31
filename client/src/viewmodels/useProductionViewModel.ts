@@ -10,6 +10,7 @@ import {
   type OrderInfo,
 } from "@/models";
 import type { CalcResult, CompleteCalculationOutcome } from "@/services";
+import { AuditAction } from "@/admin";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -70,7 +71,7 @@ interface ProductionViewModel {
  * commits the result to the warehouse via {@link WarehouseService}.
  */
 export function useProductionViewModel(): ProductionViewModel {
-  const { calculation, jumbos, materials, warehouse, settings } = useServices();
+  const { calculation, jumbos, materials, warehouse, settings, admin } = useServices();
 
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState<Jumbo[]>([]);
@@ -216,13 +217,19 @@ export function useProductionViewModel(): ProductionViewModel {
       if (result) {
         setOutcome(result);
         setSelectedJumbo(null);
+        await admin.audit.record(AuditAction.calculation, {
+          entity: "Джамб",
+          entityId: selectedJumbo.stockNumber,
+          user: order.operator,
+          details: `Заказ ${order.orderNumber || "без номера"}: ${plan.total_rolls} рул.`,
+        });
         await loadAvailable();
       }
       return result;
     } finally {
       setExecuting(false);
     }
-  }, [selectedJumbo, input, plan, canExecute, warehouse, order, params, loadAvailable]);
+  }, [selectedJumbo, input, plan, canExecute, warehouse, order, params, loadAvailable, admin]);
 
   const reset = useCallback(() => {
     setSelectedJumbo(null);

@@ -24,6 +24,34 @@ export interface AppSettings {
   reportBody: string;
   /** Расписание автоматической отправки. */
   reportSchedule: DocumentSchedule;
+
+  // Производство
+  /** Порог остатка Джамба (м) для перевода в «Подлежит списанию». */
+  jumboThresholdM: number;
+  /** Количество станков. */
+  machineCount: number;
+  /** Названия станков (через запятую). */
+  machineNames: string;
+  /** Формат даты (для отображения). */
+  dateFormat: string;
+  /** Формат времени (для отображения). */
+  timeFormat: string;
+
+  // Безопасность
+  /** Включён ли PIN-код. */
+  pinEnabled: boolean;
+  /** PIN-код (локальная блокировка; не средство криптозащиты). */
+  pin: string;
+  /** Биометрия (если поддерживается устройством) — подготовлено. */
+  biometricsEnabled: boolean;
+  /** Автоблокировка, минут (0 — выключена). */
+  autoLockMinutes: number;
+  /** Подтверждать удаление. */
+  confirmDelete: boolean;
+
+  // Резервное копирование
+  /** Автоматическое резервное копирование. */
+  autoBackup: boolean;
 }
 
 export const defaultSettings: AppSettings = {
@@ -38,4 +66,18 @@ export const defaultSettings: AppSettings = {
   reportBody:
     "Добрый день.\n\nВо вложении находится автоматически сформированный производственный отчёт.\n\nПисьмо создано автоматически.",
   reportSchedule: DocumentSchedule.monthly,
+
+  jumboThresholdM: 300,
+  machineCount: 2,
+  machineNames: "Станок №1, Станок №2",
+  dateFormat: "ДД.ММ.ГГГГ",
+  timeFormat: "ЧЧ:ММ",
+
+  pinEnabled: false,
+  pin: "",
+  biometricsEnabled: false,
+  autoLockMinutes: 0,
+  confirmDelete: true,
+
+  autoBackup: false,
 };

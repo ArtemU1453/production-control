@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
 import { MaterialStatus, type Jumbo, type Material } from "@/models";
 import { firstError, validatePositive, validateRequired } from "@/services";
+import { AuditAction } from "@/admin";
 
 export interface ReceiptItemDraft {
   stockNumber: string;
@@ -46,7 +47,7 @@ interface ReceiptViewModel {
  * warehouse service.
  */
 export function useReceiptViewModel(): ReceiptViewModel {
-  const { materials: materialRepository, jumbos: jumboRepository, warehouse, settings } =
+  const { materials: materialRepository, jumbos: jumboRepository, warehouse, settings, admin } =
     useServices();
 
   const [loading, setLoading] = useState(true);
@@ -162,11 +163,17 @@ export function useReceiptViewModel(): ReceiptViewModel {
           comment: item.comment.trim() || undefined,
         })),
       });
+      await admin.audit.record(AuditAction.jumboCreate, {
+        entity: "Партия",
+        entityId: selectedMaterial.code,
+        user: current.operator || undefined,
+        details: `Оприходовано Джамбов: ${created.length}`,
+      });
       return created;
     } finally {
       setSaving(false);
     }
-  }, [selectedMaterial, items, existingNumbers, arrivalDate, warehouse, settings]);
+  }, [selectedMaterial, items, existingNumbers, arrivalDate, warehouse, settings, admin]);
 
   return {
     loading,

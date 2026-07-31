@@ -24,6 +24,18 @@ import {
 } from "@/documents/views";
 import { useDocumentScheduler } from "@/documents/viewmodels/useDocumentScheduler";
 import { AnalyticsCenterView } from "@/analytics/views";
+import {
+  AboutView,
+  BackupView,
+  DiagnosticsView,
+  EmailSettingsView,
+  GeneralSettingsView,
+  LogsView,
+  MaintenanceView,
+  ProductionSettingsView,
+  SecuritySettingsView,
+} from "@/admin/views";
+import { useAppBootstrap } from "@/admin/viewmodels/useAppBootstrap";
 import NotFound from "@/pages/not-found";
 
 function isReportKind(value: string): value is ReportKind {
@@ -34,6 +46,7 @@ function isReportKind(value: string): value is ReportKind {
  *  stays persistent across navigation, mirroring a native TabView. */
 function AppRouter() {
   useDocumentScheduler();
+  useAppBootstrap();
   return (
     <>
       <Switch>
@@ -74,6 +87,15 @@ function AppRouter() {
         </Route>
 
         <Route path="/settings" component={SettingsView} />
+        <Route path="/settings/general" component={GeneralSettingsView} />
+        <Route path="/settings/production" component={ProductionSettingsView} />
+        <Route path="/settings/email" component={EmailSettingsView} />
+        <Route path="/settings/security" component={SecuritySettingsView} />
+        <Route path="/settings/backup" component={BackupView} />
+        <Route path="/settings/maintenance" component={MaintenanceView} />
+        <Route path="/settings/diagnostics" component={DiagnosticsView} />
+        <Route path="/settings/logs" component={LogsView} />
+        <Route path="/settings/about" component={AboutView} />
         <Route component={NotFound} />
       </Switch>
       <TabBar />

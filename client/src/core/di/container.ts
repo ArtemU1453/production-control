@@ -32,6 +32,10 @@ import {
   type AnalyticsService,
 } from "../../analytics";
 import { createAdminCenter, type AdminCenter } from "../../admin";
+import {
+  createIntelligenceCenter,
+  type IntelligenceCenter,
+} from "../../intelligence";
 
 /**
  * Application composition root.
@@ -61,6 +65,8 @@ export interface AppContainer {
   analytics: AnalyticsService;
   /** Administration: logs, users, backup/restore, maintenance, diagnostics. */
   admin: AdminCenter;
+  /** Decision support (v2.0): notifications, forecasts, quality, search. */
+  intelligence: IntelligenceCenter;
 }
 
 export function createAppContainer(
@@ -80,6 +86,23 @@ export function createAppContainer(
     cuttingSessions,
     wastes,
     jumboOperations,
+  });
+  const documents = createDocumentsCenter({
+    reports: reportCenter.service,
+    settings,
+    store,
+  });
+  const admin = createAdminCenter(store);
+  const intelligence = createIntelligenceCenter({
+    reportRepository: reportCenter.repository,
+    settings,
+    jumbos,
+    materials,
+    archivedJumbos,
+    sessions: cuttingSessions,
+    documentsHistory: () => documents.service.history(),
+    backupMeta: () => admin.backup.meta(),
+    store,
   });
   return {
     store,
@@ -101,12 +124,9 @@ export function createAppContainer(
       settings,
     ),
     reportCenter,
-    documents: createDocumentsCenter({
-      reports: reportCenter.service,
-      settings,
-      store,
-    }),
+    documents,
     analytics: createAnalyticsService(reportCenter.repository, createKpiEngine()),
-    admin: createAdminCenter(store),
+    admin,
+    intelligence,
   };
 }

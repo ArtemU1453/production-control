@@ -36,6 +36,13 @@ import {
   SecuritySettingsView,
 } from "@/admin/views";
 import { useAppBootstrap } from "@/admin/viewmodels/useAppBootstrap";
+import {
+  DecisionsView,
+  IntegrationsView,
+  NotificationCenterView,
+  SearchView,
+  SettingsHistoryView,
+} from "@/intelligence/views";
 import NotFound from "@/pages/not-found";
 
 function isReportKind(value: string): value is ReportKind {
@@ -80,6 +87,10 @@ function AppRouter() {
 
         <Route path="/analytics" component={AnalyticsCenterView} />
 
+        <Route path="/notifications" component={NotificationCenterView} />
+        <Route path="/decisions" component={DecisionsView} />
+        <Route path="/search" component={SearchView} />
+
         <Route path="/documents" component={DocumentsView} />
         <Route path="/documents/new" component={DocumentComposeView} />
         <Route path="/documents/:id">
@@ -95,6 +106,8 @@ function AppRouter() {
         <Route path="/settings/maintenance" component={MaintenanceView} />
         <Route path="/settings/diagnostics" component={DiagnosticsView} />
         <Route path="/settings/logs" component={LogsView} />
+        <Route path="/settings/history" component={SettingsHistoryView} />
+        <Route path="/settings/integrations" component={IntegrationsView} />
         <Route path="/settings/about" component={AboutView} />
         <Route component={NotFound} />
       </Switch>

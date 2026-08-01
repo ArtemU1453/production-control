@@ -30,6 +30,19 @@ export interface ProductionParams {
 /** Outcome status of the live plan for the selected Jumbo. */
 export type ProductionPlanStatus = "idle" | "ok" | "insufficient" | "error";
 
+/** Lifecycle phase of the production run (workflow only — not persisted). */
+export type OrderPhase = "setup" | "running" | "paused" | "completed";
+
+/** A production-journal entry recorded while an order is in work. */
+export type ProductionLogKind = "defect" | "scrap" | "stop" | "comment";
+export interface ProductionLogEntry {
+  id: string;
+  kind: ProductionLogKind;
+  at: string;
+  note?: string;
+  count?: number;
+}
+
 /** One Jumbo's contribution to a multi-Jumbo order chain. */
 export interface ChainStep {
   jumboStockNumber: string;
@@ -44,6 +57,26 @@ export interface ChainStep {
   usefulAreaM2: number;
   wasteAreaM2: number;
   wastePercent: number;
+  cycles: number;
+}
+
+/** Final production summary shown once an order is completed. */
+export interface CompletionSummary {
+  orderNumber: string;
+  customer: string;
+  jumbosUsed: number;
+  producedMainRolls: number;
+  goodRolls: number;
+  targetRolls: number;
+  defects: number;
+  usedMaterialM: number;
+  remainderM: number;
+  usefulAreaM2: number;
+  totalWasteAreaM2: number;
+  utilizationPercent: number;
+  cycles: number;
+  durationMs: number;
+  steps: ChainStep[];
 }
 
 /** Roll-up shown once a (possibly multi-Jumbo) order is finished. */
@@ -86,8 +119,20 @@ function buildStep(jumbo: Jumbo, plan: CalcResult, outcome: CompleteCalculationO
     usefulAreaM2: plan.useful_area_m2,
     wasteAreaM2: plan.waste_area_m2,
     wastePercent: plan.waste_percent,
+    cycles: plan.cycles_used,
   };
 }
+
+/** Machine status labels (workflow view — derived, not persisted). */
+export const MACHINE_STATUS = {
+  free: "Свободен",
+  busy: "Выполняет заказ",
+  maintenance: "Техобслуживание",
+  inactive: "Неактивен",
+} as const;
+
+const BUSY_MACHINE_MESSAGE =
+  "Станок выполняет активный заказ. Сначала завершите текущий заказ.";
 
 interface ProductionViewModel {
   loading: boolean;
@@ -130,6 +175,41 @@ interface ProductionViewModel {
   continueOnNewJumbo: (next: Jumbo) => Promise<void>;
   /** Summary shown after the whole order is completed. */
   orderSummary: OrderSummary | null;
+
+  // ── Production lifecycle ─────────────────────────────────────────────────
+  /** Current lifecycle phase of the run. */
+  phase: OrderPhase;
+  /** Human status label of the order (Создан … Выполнен). */
+  orderStatusLabel: string;
+  /** True while the order is in work (running or paused) — inputs are locked. */
+  locked: boolean;
+  /** The plan is valid and the order can start. */
+  canStart: boolean;
+  /** ISO timestamp when production started (fixed at start). */
+  startedAt: string | null;
+  startProduction: () => void;
+  pauseProduction: () => void;
+  resumeProduction: () => void;
+  /** Commit the run: books rolls/consumption via the warehouse, frees the
+   *  machine, moves to "Выполнен" and builds the final summary. */
+  finishProduction: () => Promise<CompleteCalculationOutcome | undefined>;
+  finishing: boolean;
+  /** Start a fresh order after one is completed. */
+  newOrder: () => void;
+  /** In-session production journal (defects, scrap, stops, notes). */
+  productionLog: ProductionLogEntry[];
+  addDefect: (count?: number, note?: string) => void;
+  addScrap: (note?: string) => void;
+  addStop: (note?: string) => void;
+  addNote: (note: string) => void;
+  defectCount: number;
+  /** Final summary shown in the "completed" phase. */
+  completionSummary: CompletionSummary | null;
+  /** Status label for a machine (свободен / выполняет заказ …). */
+  machineStatusLabel: (machine: Machine) => string;
+  machineBusy: (machine: Machine) => boolean;
+  /** Message shown if a new order is attempted on a busy machine. */
+  busyMachineMessage: string;
 }
 
 /**
@@ -183,6 +263,14 @@ export function useProductionViewModel(): ProductionViewModel {
   const [chainJumboIds, setChainJumboIds] = useState<string[]>([]);
   const [continuing, setContinuing] = useState(false);
   const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
+
+  // Lifecycle state (workflow only — nothing here is persisted to a model).
+  const [phase, setPhase] = useState<OrderPhase>("setup");
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [productionLog, setProductionLog] = useState<ProductionLogEntry[]>([]);
+  const [busyMachines, setBusyMachines] = useState<Machine[]>([]);
+  const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
 
   const loadAvailable = useCallback(async () => {
     const [jumboList, materialList] = await Promise.all([jumbos.getAll(), materials.getAll()]);
@@ -452,6 +540,139 @@ export function useProductionViewModel(): ProductionViewModel {
     setOrderSummary(null);
   }, []);
 
+  // ── Production lifecycle ──────────────────────────────────────────────────
+  const locked = phase === "running" || phase === "paused";
+  const canStart = phase === "setup" && canExecute;
+  const defectCount = productionLog
+    .filter((entry) => entry.kind === "defect")
+    .reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+
+  const orderStatusLabel = (() => {
+    if (phase === "completed") return "Выполнен";
+    if (phase === "paused") return "Приостановлен";
+    if (phase === "running") return "В работе";
+    if (!plan || planStatus !== "ok") return "Создан";
+    return canExecute ? "Ожидает запуска" : "Рассчитан";
+  })();
+
+  const machineBusy = useCallback(
+    (machine: Machine) => busyMachines.includes(machine),
+    [busyMachines],
+  );
+  const machineStatusLabel = useCallback(
+    (machine: Machine) => (busyMachines.includes(machine) ? MACHINE_STATUS.busy : MACHINE_STATUS.free),
+    [busyMachines],
+  );
+
+  const startProduction = useCallback(() => {
+    if (phase !== "setup" || !canExecute) {
+      return;
+    }
+    setStartedAt(new Date().toISOString());
+    setOrderTotalRolls((total) => total ?? params.orderRolls);
+    setBusyMachines((machines) =>
+      machines.includes(order.machine) ? machines : [...machines, order.machine],
+    );
+    setPhase("running");
+  }, [phase, canExecute, params.orderRolls, order.machine]);
+
+  const pauseProduction = useCallback(() => {
+    setPhase((current) => (current === "running" ? "paused" : current));
+  }, []);
+  const resumeProduction = useCallback(() => {
+    setPhase((current) => (current === "paused" ? "running" : current));
+  }, []);
+
+  const pushLog = useCallback(
+    (kind: ProductionLogKind, note?: string, count?: number) => {
+      setPhase((current) => {
+        if (current === "running" || current === "paused") {
+          setProductionLog((log) => [
+            { id: makeId(), kind, at: new Date().toISOString(), note, count },
+            ...log,
+          ]);
+        }
+        return current;
+      });
+    },
+    [],
+  );
+  const addDefect = useCallback((count = 1, note?: string) => pushLog("defect", note, count), [pushLog]);
+  const addScrap = useCallback((note?: string) => pushLog("scrap", note), [pushLog]);
+  const addStop = useCallback((note?: string) => pushLog("stop", note), [pushLog]);
+  const addNote = useCallback((note: string) => pushLog("comment", note), [pushLog]);
+
+  const finishProduction = useCallback(async (): Promise<CompleteCalculationOutcome | undefined> => {
+    if ((phase !== "running" && phase !== "paused") || !canExecute) {
+      return undefined;
+    }
+    setFinishing(true);
+    try {
+      const jumboAtFinish = selectedJumbo;
+      const planAtFinish = plan;
+      const priorSteps = [...chainSteps];
+      const priorProduced = producedMain;
+      const target = orderTotalRolls ?? params.orderRolls;
+      const machine = order.machine;
+      const startedSnapshot = startedAt;
+      const defects = defectCount;
+
+      const result = await execute();
+      if (result && jumboAtFinish && planAtFinish) {
+        const steps = [...priorSteps, buildStep(jumboAtFinish, planAtFinish, result)];
+        const usefulArea = round1(steps.reduce((sum, step) => sum + step.usefulAreaM2, 0));
+        const wasteArea = round1(steps.reduce((sum, step) => sum + step.wasteAreaM2, 0));
+        const producedRolls = priorProduced + planAtFinish.total_main_rolls;
+        setCompletionSummary({
+          orderNumber: order.orderNumber,
+          customer: order.customer,
+          jumbosUsed: steps.length,
+          producedMainRolls: producedRolls,
+          goodRolls: Math.max(0, producedRolls - defects),
+          targetRolls: target,
+          defects,
+          usedMaterialM: round1(steps.reduce((sum, step) => sum + step.consumedM, 0)),
+          remainderM: result.remainderAfterM,
+          usefulAreaM2: usefulArea,
+          totalWasteAreaM2: wasteArea,
+          utilizationPercent:
+            usefulArea + wasteArea > 0 ? round1((usefulArea / (usefulArea + wasteArea)) * 100) : 0,
+          cycles: steps.reduce((sum, step) => sum + step.cycles, 0),
+          durationMs: startedSnapshot ? Date.now() - new Date(startedSnapshot).getTime() : 0,
+          steps,
+        });
+        setBusyMachines((machines) => machines.filter((m) => m !== machine));
+        setPhase("completed");
+      }
+      return result;
+    } finally {
+      setFinishing(false);
+    }
+  }, [
+    phase,
+    canExecute,
+    selectedJumbo,
+    plan,
+    chainSteps,
+    producedMain,
+    orderTotalRolls,
+    params.orderRolls,
+    order.machine,
+    order.orderNumber,
+    order.customer,
+    startedAt,
+    defectCount,
+    execute,
+  ]);
+
+  const newOrder = useCallback(() => {
+    setPhase("setup");
+    setStartedAt(null);
+    setProductionLog([]);
+    setCompletionSummary(null);
+    reset();
+  }, [reset]);
+
   return {
     loading,
     order,
@@ -482,5 +703,26 @@ export function useProductionViewModel(): ProductionViewModel {
     continuing,
     continueOnNewJumbo,
     orderSummary,
+    phase,
+    orderStatusLabel,
+    locked,
+    canStart,
+    startedAt,
+    startProduction,
+    pauseProduction,
+    resumeProduction,
+    finishProduction,
+    finishing,
+    newOrder,
+    productionLog,
+    addDefect,
+    addScrap,
+    addStop,
+    addNote,
+    defectCount,
+    completionSummary,
+    machineStatusLabel,
+    machineBusy,
+    busyMachineMessage: BUSY_MACHINE_MESSAGE,
   };
 }

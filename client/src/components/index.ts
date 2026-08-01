@@ -11,6 +11,7 @@ export { SearchBar } from "./SearchBar";
 export { SegmentedControl, type SegmentOption } from "./SegmentedControl";
 export { ListRow } from "./ListRow";
 export { ScreenScaffold } from "./ScreenScaffold";
+export { IdentifierInput } from "./IdentifierInput";
 
 // UI Components library (Design-System-driven, presentational).
 export { DangerButton } from "./DangerButton";

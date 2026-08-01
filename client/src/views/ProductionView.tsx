@@ -329,6 +329,21 @@ export function ProductionView() {
       ? Math.round((vm.selectedJumbo.currentRemainderM / vm.selectedJumbo.initialWindingM) * 100)
       : 0;
 
+  // Readiness breakdown for the start button. Purely display: the button stays
+  // gated by the single source of truth `vm.canStart` (desktop, mobile and PWA
+  // alike) — this only surfaces *which* required field is still missing so a
+  // disabled button is never a mystery. Дата/Время/Комментарий не входят в
+  // проверку (дата и время подставляются автоматически).
+  const startRequirements = [
+    { ok: Boolean(vm.selectedJumbo), label: "Джамбо" },
+    { ok: vm.order.orderNumber.trim().length > 0, label: "Код заказа" },
+    { ok: vm.order.customer.trim().length > 0, label: "Заказчик" },
+    { ok: vm.order.operator.trim().length > 0, label: "Оператор" },
+    { ok: Boolean(vm.order.machine), label: "Станок" },
+    { ok: vm.planStatus === "ok", label: "Расчёт схемы" },
+  ];
+  const missingRequirements = startRequirements.filter((r) => !r.ok).map((r) => r.label);
+
   const onStart = () => {
     vm.startProduction();
     toast({ title: "Производство начато" });
@@ -564,6 +579,11 @@ export function ProductionView() {
                       Запустить производство
                     </PrimaryButton>
                   )}
+                  {!locked && !vm.canStart && missingRequirements.length > 0 ? (
+                    <p className={cn(AppTypography.caption, "text-muted-foreground")}>
+                      Для запуска заполните: {missingRequirements.join(", ")}
+                    </p>
+                  ) : null}
                 </div>
               </CardView>
 

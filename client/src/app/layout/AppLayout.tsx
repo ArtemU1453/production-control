@@ -28,7 +28,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     <div className={cn("min-h-dvh", surfaces.screenBackground)}>
       <Sidebar />
 
-      <div className="lg:pl-64">
+      <div className="lg:pl-56">
         <TopBar />
         <main className="safe-x content-pad-t content-pad-b mx-auto w-full">{children}</main>
       </div>

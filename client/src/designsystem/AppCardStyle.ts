@@ -11,7 +11,7 @@ import { AppSpacing } from "./AppSpacing";
  */
 export const AppCardStyle = {
   /** Standard content card. */
-  surface: `${surfaces.glassCard} ${AppRadius.role.card} border-card-border ${AppShadow.level.card} ${AppSpacing.pad.sm}`,
+  surface: `${surfaces.glassCard} ${AppRadius.role.card} border-card-border ${AppShadow.level.card} p-3`,
   /** Interactive (tappable) card. */
   interactive: "transition-transform active:scale-[0.99]",
   /** Leading colour bar for status cards (colour applied via inline style). */

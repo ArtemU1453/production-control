@@ -28,11 +28,11 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // @replit changed sizes
-        default: "min-h-9 px-4 py-2",
-        sm: "min-h-8 rounded-md px-3 text-xs",
-        lg: "min-h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+        // Compact production density — smaller controls, same readability.
+        default: "min-h-8 px-3 py-1.5",
+        sm: "min-h-7 rounded-md px-2.5 text-xs",
+        lg: "min-h-9 rounded-md px-6",
+        icon: "h-8 w-8",
       },
     },
     defaultVariants: {

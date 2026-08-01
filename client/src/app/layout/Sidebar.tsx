@@ -19,7 +19,7 @@ function NavLink({ item, current }: { item: TabDefinition; current: string }) {
       href={item.path}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+        "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
         active
           ? "bg-primary/12 text-primary"
           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -46,13 +46,13 @@ export function Sidebar() {
   return (
     <aside
       data-app-chrome
-      className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-border/60 bg-background/80 backdrop-blur-xl lg:flex"
+      className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-border/60 bg-background/80 backdrop-blur-xl lg:flex"
       style={{ paddingTop: "env(safe-area-inset-top)", paddingLeft: "env(safe-area-inset-left)" }}
       aria-label="Боковая навигация"
     >
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <AppMark className="h-5 w-5" />
+      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <AppMark className="h-[18px] w-[18px]" />
         </span>
         <div className="min-w-0 leading-tight">
           <div className={cn(AppTypography.subheadline, "truncate")}>Production Control</div>
@@ -60,20 +60,20 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="Основные разделы">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-1.5" aria-label="Основные разделы">
         {tabs.map((item) => (
           <NavLink key={item.key} item={item} current={location} />
         ))}
 
-        <div className={cn(AppTypography.caption2, "px-3 pb-1 pt-4 text-muted-foreground")}>Ещё</div>
+        <div className={cn(AppTypography.caption2, "px-2.5 pb-1 pt-3 text-muted-foreground")}>Ещё</div>
         {secondaryNav.map((item) => (
           <NavLink key={item.key} item={item} current={location} />
         ))}
       </nav>
 
       <div
-        className={cn(AppTypography.caption, "shrink-0 px-5 py-3 text-muted-foreground")}
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        className={cn(AppTypography.caption, "shrink-0 px-4 py-2 text-muted-foreground")}
+        style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       >
         v2 · Production Control
       </div>

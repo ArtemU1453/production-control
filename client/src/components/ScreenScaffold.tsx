@@ -38,12 +38,12 @@ export function ScreenScaffold({
 }: ScreenScaffoldProps) {
   return (
     <div className={cn("mx-auto w-full", wide ? "max-w-[1680px]" : "max-w-[1120px]")}>
-      <header className="pt-5">
+      <header className="pt-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
             {subtitle ? (
-              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
             ) : null}
           </div>
           {toolbar ? <div className="flex shrink-0 items-center gap-2">{toolbar}</div> : null}
@@ -54,7 +54,7 @@ export function ScreenScaffold({
         initial={animations.screenEnter.initial}
         animate={animations.screenEnter.animate}
         transition={animations.screenEnter.transition}
-        className={cn("pt-4", className)}
+        className={cn("pt-3", className)}
       >
         {children}
       </motion.main>

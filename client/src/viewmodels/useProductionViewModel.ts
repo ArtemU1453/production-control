@@ -11,12 +11,13 @@ import {
 } from "@/models";
 import type { CalcResult, CompleteCalculationOutcome } from "@/services";
 import { AuditAction } from "@/admin";
+import { makeId } from "@/utilities/id";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
 /** Message shown when the selected Jumbo cannot cover the order. */
 export const NOT_ENOUGH_MATERIAL_MESSAGE =
-  "Недостаточно материала для выполнения заказа. Завершите текущий Джамб и выберите новый.";
+  "Текущего Джамбо недостаточно для завершения заказа. Подключите следующий Джамбо, чтобы продолжить.";
 
 export interface ProductionParams {
   rollWidthMm: number;
@@ -29,6 +30,35 @@ export interface ProductionParams {
 /** Outcome status of the live plan for the selected Jumbo. */
 export type ProductionPlanStatus = "idle" | "ok" | "insufficient" | "error";
 
+/** One Jumbo's contribution to a multi-Jumbo order chain. */
+export interface ChainStep {
+  jumboStockNumber: string;
+  materialCode: string;
+  /** Main (order) rolls produced on this Jumbo. */
+  producedMainRolls: number;
+  additionalRolls: number;
+  /** Remainder left on this Jumbo after its part of the order (preserved). */
+  remainderAfterM: number;
+  /** Length consumed from this Jumbo for the order. */
+  consumedM: number;
+  usefulAreaM2: number;
+  wasteAreaM2: number;
+  wastePercent: number;
+}
+
+/** Roll-up shown once a (possibly multi-Jumbo) order is finished. */
+export interface OrderSummary {
+  orderNumber: string;
+  customer: string;
+  jumbosUsed: number;
+  totalMainRolls: number;
+  targetRolls: number;
+  totalConsumedM: number;
+  totalUsefulAreaM2: number;
+  totalWasteAreaM2: number;
+  steps: ChainStep[];
+}
+
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -37,8 +67,26 @@ function currentTime(): string {
   return new Date().toTimeString().slice(0, 5);
 }
 
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 function isInsufficientMessage(message: string): boolean {
   return message.includes("Недостаточ") || message.toLowerCase().includes("длин");
+}
+
+function buildStep(jumbo: Jumbo, plan: CalcResult, outcome: CompleteCalculationOutcome): ChainStep {
+  return {
+    jumboStockNumber: jumbo.stockNumber,
+    materialCode: jumbo.materialCode,
+    producedMainRolls: plan.total_main_rolls,
+    additionalRolls: plan.total_additional_rolls,
+    remainderAfterM: outcome.remainderAfterM,
+    consumedM: round1(Math.max(0, jumbo.currentRemainderM - outcome.remainderAfterM)),
+    usefulAreaM2: plan.useful_area_m2,
+    wasteAreaM2: plan.waste_area_m2,
+    wastePercent: plan.waste_percent,
+  };
 }
 
 interface ProductionViewModel {
@@ -61,17 +109,48 @@ interface ProductionViewModel {
   outcome: CompleteCalculationOutcome | null;
   execute: () => Promise<CompleteCalculationOutcome | undefined>;
   reset: () => void;
+
+  // ── Multi-Jumbo order chain ──────────────────────────────────────────────
+  /** True once the order spans more than one Jumbo. */
+  chainActive: boolean;
+  /** Completed steps of the current order chain (finished Jumbos). */
+  chainSteps: ChainStep[];
+  /** Main rolls produced for the order so far (across finished Jumbos). */
+  producedMain: number;
+  /** Original order quantity for the running chain. */
+  orderTotalRolls: number | null;
+  /** Rolls still to produce for the order. */
+  remainingRolls: number | null;
+  /** Jumbos eligible to continue the order (excludes used ones and current). */
+  eligibleForContinue: Jumbo[];
+  /** Whether the order can be continued on another Jumbo right now. */
+  canContinue: boolean;
+  continuing: boolean;
+  /** Finish the current Jumbo's part and continue the order on `next`. */
+  continueOnNewJumbo: (next: Jumbo) => Promise<void>;
+  /** Summary shown after the whole order is completed. */
+  orderSummary: OrderSummary | null;
 }
 
 /**
- * ViewModel for the production calculation. It gathers the order info, the
- * operator-selected Jumbo and the roll parameters, derives the live plan with
- * the unchanged calculation engine (Jumbo width and current remainder feed the
- * material width and available length), validates production preconditions, and
- * commits the result to the warehouse via {@link WarehouseService}.
+ * ViewModel for the production calculation.
+ *
+ * Gathers the order info, the operator-selected Jumbo and the roll parameters,
+ * derives the live plan with the unchanged calculation engine, validates
+ * production preconditions, and commits results to the warehouse via
+ * {@link WarehouseService}.
+ *
+ * When a single Jumbo cannot cover the order, the ViewModel drives a **Jumbo
+ * chain**: it books what the current Jumbo produced (a partial run through the
+ * unchanged `completeCalculation`), preserves that Jumbo's remainder, carries
+ * the outstanding quantity to the next Jumbo, and repeats — for any number of
+ * Jumbos — without the operator re-entering the order. The engine, the cutting
+ * logic and the warehouse service are reused verbatim; only the order-execution
+ * scenario is extended, plus a `chainId` stamped on each session to link them.
  */
 export function useProductionViewModel(): ProductionViewModel {
-  const { calculation, jumbos, materials, warehouse, settings, admin } = useServices();
+  const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions } =
+    useServices();
 
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState<Jumbo[]>([]);
@@ -96,11 +175,17 @@ export function useProductionViewModel(): ProductionViewModel {
   const [executing, setExecuting] = useState(false);
   const [outcome, setOutcome] = useState<CompleteCalculationOutcome | null>(null);
 
+  // Chain state.
+  const [chainId, setChainId] = useState<string | null>(null);
+  const [chainSteps, setChainSteps] = useState<ChainStep[]>([]);
+  const [producedMain, setProducedMain] = useState(0);
+  const [orderTotalRolls, setOrderTotalRolls] = useState<number | null>(null);
+  const [chainJumboIds, setChainJumboIds] = useState<string[]>([]);
+  const [continuing, setContinuing] = useState(false);
+  const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
+
   const loadAvailable = useCallback(async () => {
-    const [jumboList, materialList] = await Promise.all([
-      jumbos.getAll(),
-      materials.getAll(),
-    ]);
+    const [jumboList, materialList] = await Promise.all([jumbos.getAll(), materials.getAll()]);
     setAvailable(
       jumboList.filter(
         (jumbo) =>
@@ -129,12 +214,9 @@ export function useProductionViewModel(): ProductionViewModel {
     };
   }, [settings, loadAvailable]);
 
-  const updateOrder = useCallback(
-    <K extends keyof OrderInfo>(key: K, value: OrderInfo[K]) => {
-      setOrder((previous) => ({ ...previous, [key]: value }));
-    },
-    [],
-  );
+  const updateOrder = useCallback(<K extends keyof OrderInfo>(key: K, value: OrderInfo[K]) => {
+    setOrder((previous) => ({ ...previous, [key]: value }));
+  }, []);
 
   const updateParam = useCallback(
     <K extends keyof ProductionParams>(key: K, value: ProductionParams[K]) => {
@@ -201,6 +283,100 @@ export function useProductionViewModel(): ProductionViewModel {
 
   const canExecute = planStatus === "ok" && plan !== null && orderValid && jumboValid;
 
+  const eligibleForContinue = useMemo(
+    () =>
+      available.filter(
+        (jumbo) => jumbo.id !== selectedJumbo?.id && !chainJumboIds.includes(jumbo.id),
+      ),
+    [available, selectedJumbo, chainJumboIds],
+  );
+
+  const canContinue =
+    planStatus === "insufficient" && orderValid && jumboValid && eligibleForContinue.length > 0;
+
+  const remainingRolls =
+    orderTotalRolls !== null ? Math.max(0, orderTotalRolls - producedMain) : null;
+
+  const recordAudit = useCallback(
+    async (jumbo: Jumbo, done: CalcResult, note: string) => {
+      await admin.audit.record(AuditAction.calculation, {
+        entity: "Джамб",
+        entityId: jumbo.stockNumber,
+        user: order.operator,
+        details: `Заказ ${order.orderNumber || "без номера"}${note}: ${done.total_rolls} рул.`,
+      });
+    },
+    [admin, order.operator, order.orderNumber],
+  );
+
+  const continueOnNewJumbo = useCallback(
+    async (next: Jumbo) => {
+      if (!selectedJumbo || !orderValid || !jumboValid) {
+        return;
+      }
+      setContinuing(true);
+      try {
+        const activeChainId = chainId ?? makeId();
+        const total = orderTotalRolls ?? params.orderRolls;
+        let produced = producedMain;
+        const steps = [...chainSteps];
+
+        // Book what the current Jumbo actually produced (a partial run through
+        // the unchanged warehouse service). Its remainder is preserved on the
+        // record. Skip if it cannot make even one order roll.
+        if (input && plan && plan.total_main_rolls > 0) {
+          const done = await warehouse.completeCalculation({
+            jumboId: selectedJumbo.id,
+            order,
+            input,
+            result: plan,
+            additionalDestination: params.additionalDestination,
+          });
+          if (done) {
+            const index = steps.length + 1;
+            await cuttingSessions.save({ ...done.session, chainId: activeChainId, chainIndex: index });
+            steps.push(buildStep(selectedJumbo, plan, done));
+            produced += plan.total_main_rolls;
+            await recordAudit(selectedJumbo, plan, ` (Джамб ${index})`);
+          }
+        }
+
+        setChainId(activeChainId);
+        setChainSteps(steps);
+        setProducedMain(produced);
+        setOrderTotalRolls(total);
+        setChainJumboIds((ids) => [...ids, selectedJumbo.id]);
+
+        // Carry the outstanding quantity to the next Jumbo — no re-entry needed.
+        const remaining = Math.max(1, total - produced);
+        setParams((p) => ({ ...p, orderRolls: remaining }));
+        setSelectedJumbo(next);
+        setOutcome(null);
+        setOrderSummary(null);
+        await loadAvailable();
+      } finally {
+        setContinuing(false);
+      }
+    },
+    [
+      selectedJumbo,
+      orderValid,
+      jumboValid,
+      chainId,
+      orderTotalRolls,
+      params,
+      producedMain,
+      chainSteps,
+      input,
+      plan,
+      warehouse,
+      order,
+      cuttingSessions,
+      recordAudit,
+      loadAvailable,
+    ],
+  );
+
   const execute = useCallback(async (): Promise<CompleteCalculationOutcome | undefined> => {
     if (!selectedJumbo || !input || !plan || !canExecute) {
       return undefined;
@@ -215,25 +391,65 @@ export function useProductionViewModel(): ProductionViewModel {
         additionalDestination: params.additionalDestination,
       });
       if (result) {
+        if (chainId) {
+          // Final Jumbo of a chain: link the session and build the summary.
+          const index = chainSteps.length + 1;
+          await cuttingSessions.save({ ...result.session, chainId, chainIndex: index });
+          const steps = [...chainSteps, buildStep(selectedJumbo, plan, result)];
+          setOrderSummary({
+            orderNumber: order.orderNumber,
+            customer: order.customer,
+            jumbosUsed: steps.length,
+            totalMainRolls: producedMain + plan.total_main_rolls,
+            targetRolls: orderTotalRolls ?? producedMain + plan.total_main_rolls,
+            totalConsumedM: round1(steps.reduce((s, x) => s + x.consumedM, 0)),
+            totalUsefulAreaM2: round1(steps.reduce((s, x) => s + x.usefulAreaM2, 0)),
+            totalWasteAreaM2: round1(steps.reduce((s, x) => s + x.wasteAreaM2, 0)),
+            steps,
+          });
+          setChainId(null);
+          setChainSteps([]);
+          setProducedMain(0);
+          setOrderTotalRolls(null);
+          setChainJumboIds([]);
+        } else {
+          setOrderSummary(null);
+        }
         setOutcome(result);
         setSelectedJumbo(null);
-        await admin.audit.record(AuditAction.calculation, {
-          entity: "Джамб",
-          entityId: selectedJumbo.stockNumber,
-          user: order.operator,
-          details: `Заказ ${order.orderNumber || "без номера"}: ${plan.total_rolls} рул.`,
-        });
+        await recordAudit(selectedJumbo, plan, "");
         await loadAvailable();
       }
       return result;
     } finally {
       setExecuting(false);
     }
-  }, [selectedJumbo, input, plan, canExecute, warehouse, order, params, loadAvailable, admin]);
+  }, [
+    selectedJumbo,
+    input,
+    plan,
+    canExecute,
+    warehouse,
+    order,
+    params,
+    chainId,
+    chainSteps,
+    producedMain,
+    orderTotalRolls,
+    cuttingSessions,
+    recordAudit,
+    loadAvailable,
+  ]);
 
   const reset = useCallback(() => {
     setSelectedJumbo(null);
     setOutcome(null);
+    setChainId(null);
+    setChainSteps([]);
+    setProducedMain(0);
+    setOrderTotalRolls(null);
+    setChainJumboIds([]);
+    setOrderSummary(null);
   }, []);
 
   return {
@@ -256,5 +472,15 @@ export function useProductionViewModel(): ProductionViewModel {
     outcome,
     execute,
     reset,
+    chainActive: chainId !== null,
+    chainSteps,
+    producedMain,
+    orderTotalRolls,
+    remainingRolls,
+    eligibleForContinue,
+    canContinue,
+    continuing,
+    continueOnNewJumbo,
+    orderSummary,
   };
 }

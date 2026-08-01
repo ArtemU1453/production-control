@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { AlertTriangle, CheckCircle2, PackageSearch } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, PackageSearch, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -45,7 +45,7 @@ import {
 } from "@/models";
 import { formatArea, formatHours, formatMeters } from "@/extensions/number";
 import { formatDate } from "@/extensions/date";
-import { useProductionViewModel } from "@/viewmodels";
+import { useProductionViewModel, type ChainStep, type OrderSummary } from "@/viewmodels";
 import { CuttingScheme } from "./calculator/CuttingScheme";
 
 const destinationOptions: ReadonlyArray<SegmentOption<RollDestination>> = [
@@ -120,9 +120,195 @@ function JumboPicker({
   );
 }
 
+/** Continuation picker: choose the next Jumbo to keep filling the same order. */
+function ContinueOrderDialog({
+  jumbos,
+  materialNameFor,
+  onContinue,
+  continuing,
+  disabled,
+  producedThisJumbo,
+  orderRolls,
+}: {
+  jumbos: Jumbo[];
+  materialNameFor: (jumbo: Jumbo) => string;
+  onContinue: (jumbo: Jumbo) => void;
+  continuing: boolean;
+  disabled: boolean;
+  producedThisJumbo: number;
+  orderRolls: number;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <PrimaryButton icon={Plus} fullWidth loading={continuing} disabled={disabled}>
+          Продолжить на новом Джамбо
+        </PrimaryButton>
+      </DialogTrigger>
+      <DialogContent className="max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Продолжение выполнения заказа</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Текущего Джамбо недостаточно для завершения заказа
+          {producedThisJumbo > 0 ? ` (изготовлено ${producedThisJumbo} из ${orderRolls} рул.)` : ""}.
+          Выберите следующий Джамбо, чтобы автоматически продолжить выполнение заказа.
+        </p>
+        {jumbos.length === 0 ? (
+          <EmptyState
+            icon={icons.warehouse}
+            title="Нет доступных Джамбо"
+            message="Все пригодные Джамбо уже задействованы. Оформите поступление сырья."
+            action={
+              <Link href="/warehouse/receipt">
+                <PrimaryButton icon={icons.boxes}>Поступление сырья</PrimaryButton>
+              </Link>
+            }
+          />
+        ) : (
+          <div className="space-y-2">
+            {jumbos.map((jumbo) => (
+              <button
+                key={jumbo.id}
+                type="button"
+                disabled={continuing}
+                onClick={() => {
+                  onContinue(jumbo);
+                  setOpen(false);
+                }}
+                className="w-full rounded-2xl border bg-card/60 p-3 text-left transition-colors hover:border-primary disabled:opacity-60"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">
+                    № {jumbo.stockNumber} · {jumbo.materialCode}
+                  </span>
+                  <StatusBadge
+                    label={jumboStatusTitle(jumbo.status)}
+                    tone={jumboStatusColorRole(jumbo.status)}
+                  />
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {materialNameFor(jumbo)} · {jumbo.widthMm} мм · Остаток:{" "}
+                  {formatMeters(jumbo.currentRemainderM)}
+                  {jumbo.comment ? ` · ${jumbo.comment}` : ""}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Live progress of a multi-Jumbo order while it is still running. */
+function ChainProgressCard({
+  steps,
+  produced,
+  total,
+  remaining,
+}: {
+  steps: ChainStep[];
+  produced: number;
+  total: number | null;
+  remaining: number | null;
+}) {
+  return (
+    <CardView title="Цепочка выполнения заказа" icon={icons.history} animate>
+      <div className="text-sm text-muted-foreground">
+        Изготовлено <span className="font-semibold text-foreground">{produced}</span>
+        {total !== null ? <> из <span className="font-semibold text-foreground">{total}</span></> : null} рул.
+        {remaining !== null ? <> · осталось <span className="font-semibold text-foreground">{remaining}</span></> : null}
+      </div>
+      <ol className="mt-3 space-y-2">
+        {steps.map((step, index) => (
+          <li key={`${step.jumboStockNumber}-${index}`} className="flex items-center gap-3 rounded-2xl border bg-card/50 p-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
+              {index + 1}
+            </span>
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="font-semibold">Джамбо № {step.jumboStockNumber}</div>
+              <div className="text-xs text-muted-foreground">
+                Изготовлено: {step.producedMainRolls} рул. · Остаток: {formatMeters(step.remainderAfterM)}
+              </div>
+            </div>
+          </li>
+        ))}
+        <li className="flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 p-3 text-sm text-primary">
+          <ArrowRight className="h-4 w-4 shrink-0" />
+          Следующий Джамбо — продолжение ниже
+        </li>
+      </ol>
+    </CardView>
+  );
+}
+
+/** Final roll-up shown once the whole order (any number of Jumbos) is done. */
+function OrderSummaryCard({ summary, onNewOrder }: { summary: OrderSummary; onNewOrder: () => void }) {
+  return (
+    <CardView
+      animate
+      className="border-l-4 border-l-[hsl(142_71%_45%)]"
+      title="Заказ выполнен"
+      icon={icons.gauge}
+      headerTrailing={<StatusBadge label={`Джамбо: ${summary.jumbosUsed}`} tone="neutral" />}
+    >
+      <div className="space-y-3">
+        <div className="text-sm text-muted-foreground">
+          Заказ № {summary.orderNumber || "—"}
+          {summary.customer ? ` · ${summary.customer}` : ""}
+        </div>
+
+        <div>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Использовано Джамбо
+          </div>
+          <ol className="space-y-2">
+            {summary.steps.map((step, index) => (
+              <li key={`${step.jumboStockNumber}-${index}`}>
+                <div className="flex items-center gap-3 rounded-2xl border bg-card/50 p-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1 text-sm">
+                    <div className="font-semibold">№ {step.jumboStockNumber}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Изготовлено: {step.producedMainRolls} рул. · Остаток: {formatMeters(step.remainderAfterM)}
+                    </div>
+                  </div>
+                </div>
+                {index < summary.steps.length - 1 ? (
+                  <div className="flex justify-center py-0.5 text-muted-foreground">↓</div>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Всего изготовлено" value={`${summary.totalMainRolls} шт.`} hint={`Цель: ${summary.targetRolls} шт.`} />
+          <MetricCard label="Использовано Джамбо" value={summary.jumbosUsed} />
+          <MetricCard label="Общий расход" value={formatMeters(summary.totalConsumedM)} />
+          <MetricCard label="Общий отход" value={formatArea(summary.totalWasteAreaM2)} />
+        </div>
+
+        <SecondaryButton fullWidth onClick={onNewOrder}>
+          Новый заказ
+        </SecondaryButton>
+      </div>
+    </CardView>
+  );
+}
+
 export function ProductionView() {
   const vm = useProductionViewModel();
   const { toast } = useToast();
+
+  const onContinue = async (jumbo: Jumbo) => {
+    await vm.continueOnNewJumbo(jumbo);
+    toast({ title: "Заказ продолжается на новом Джамбо" });
+  };
 
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
 
@@ -146,7 +332,9 @@ export function ProductionView() {
         <LoadingView />
       ) : (
         <div className="space-y-4">
-          {vm.outcome ? (
+          {vm.orderSummary ? (
+            <OrderSummaryCard summary={vm.orderSummary} onNewOrder={vm.reset} />
+          ) : vm.outcome ? (
             <CardView animate className={vm.outcome.becameWriteOff ? "border-l-4 border-l-destructive" : undefined}>
               <div className="flex items-start gap-2">
                 {vm.outcome.becameWriteOff ? (
@@ -167,6 +355,15 @@ export function ProductionView() {
                 </div>
               </div>
             </CardView>
+          ) : null}
+
+          {vm.chainSteps.length > 0 && !vm.orderSummary ? (
+            <ChainProgressCard
+              steps={vm.chainSteps}
+              produced={vm.producedMain}
+              total={vm.orderTotalRolls}
+              remaining={vm.remainingRolls}
+            />
           ) : null}
 
           <CardView title={strings.production.orderInfo} icon={icons.reports} animate>
@@ -377,8 +574,36 @@ export function ProductionView() {
                 Выберите Джамб, чтобы выполнить расчёт.
               </div>
             ) : vm.planStatus === "insufficient" ? (
-              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {vm.planError}
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-amber-300/40 bg-amber-50/60 p-3 dark:border-amber-800/30 dark:bg-amber-900/10">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" aria-hidden />
+                    <div className="text-sm">
+                      <div className="font-semibold text-amber-700 dark:text-amber-400">
+                        Недостаточно материала на этом Джамбо
+                      </div>
+                      <div className="mt-1 text-muted-foreground">{vm.planError}</div>
+                      {vm.plan && vm.plan.total_main_rolls > 0 ? (
+                        <div className="mt-1 text-muted-foreground">
+                          Этот Джамбо даёт {vm.plan.total_main_rolls} рул. из {vm.params.orderRolls}
+                          {vm.plan.shortage_rolls > 0 ? ` · не хватает ${vm.plan.shortage_rolls} рул.` : ""}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                {!vm.orderValid ? (
+                  <div className="text-xs text-muted-foreground">{strings.production.fillOrder}</div>
+                ) : null}
+                <ContinueOrderDialog
+                  jumbos={vm.eligibleForContinue}
+                  materialNameFor={materialNameFor}
+                  onContinue={(jumbo) => void onContinue(jumbo)}
+                  continuing={vm.continuing}
+                  disabled={!vm.canContinue}
+                  producedThisJumbo={vm.plan?.total_main_rolls ?? 0}
+                  orderRolls={vm.params.orderRolls}
+                />
               </div>
             ) : vm.planStatus === "error" ? (
               <div className="text-sm text-destructive">{vm.planError}</div>

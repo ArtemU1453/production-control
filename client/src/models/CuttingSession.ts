@@ -64,5 +64,15 @@ export interface CuttingSession {
   /** Ids of waste records for this session (populated in a later phase). */
   wasteIds: string[];
 
+  /**
+   * Multi-Jumbo order chain (optional). When one order is fulfilled across
+   * several Jumbos, every session of that order shares a `chainId`, and
+   * `chainIndex` gives its 1-based position in the chain. Absent for ordinary
+   * single-Jumbo orders. This only links existing session records — no cutting
+   * math or material data changes.
+   */
+  chainId?: string;
+  chainIndex?: number;
+
   comment?: string;
 }

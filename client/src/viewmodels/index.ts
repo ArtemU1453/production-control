@@ -10,6 +10,8 @@ export {
   useProductionViewModel,
   type ProductionParams,
   type ProductionPlanStatus,
+  type ChainStep,
+  type OrderSummary,
   NOT_ENOUGH_MATERIAL_MESSAGE,
 } from "./useProductionViewModel";
 export {

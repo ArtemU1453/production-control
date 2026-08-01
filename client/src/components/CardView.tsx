@@ -33,7 +33,7 @@ export function CardView({
   animate = false,
 }: CardViewProps) {
   const body = (
-    <Card className={cn("glass noise rounded-3xl border-card-border p-4", className)}>
+    <Card className={cn("glass noise rounded-2xl border-card-border p-3", className)}>
       {title ? (
         <>
           <SectionHeader
@@ -43,7 +43,7 @@ export function CardView({
             tone={headerTone}
             trailing={headerTrailing}
           />
-          <Separator className="my-4" />
+          <Separator className="my-2.5" />
         </>
       ) : null}
       {children}

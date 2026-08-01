@@ -28,13 +28,13 @@ export function SectionHeader({
         {Icon ? (
           <div
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-2xl",
+              "flex h-8 w-8 items-center justify-center rounded-xl",
               tone === "primary"
                 ? "bg-primary text-primary-foreground shadow-[var(--shadow-glow)]"
                 : "bg-accent text-accent-foreground",
             )}
           >
-            <Icon className="h-[18px] w-[18px]" />
+            <Icon className="h-4 w-4" />
           </div>
         ) : null}
         <div>

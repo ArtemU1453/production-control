@@ -29,7 +29,7 @@ export function TopBar() {
   return (
     <header
       data-app-chrome
-      className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-3 border-b border-border/60 bg-background/70 px-6 backdrop-blur-xl lg:flex"
+      className="sticky top-0 z-30 hidden h-12 items-center justify-between gap-3 border-b border-border/60 bg-background/70 px-4 backdrop-blur-xl lg:flex"
       style={{ paddingTop: "env(safe-area-inset-top)", paddingRight: "max(1.5rem, env(safe-area-inset-right))" }}
     >
       <div className={cn(AppTypography.headline, "truncate")}>{currentSection(location)}</div>

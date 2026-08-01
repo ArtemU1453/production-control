@@ -12,6 +12,10 @@ export {
   type ProductionPlanStatus,
   type ChainStep,
   type OrderSummary,
+  type OrderPhase,
+  type ProductionLogEntry,
+  type CompletionSummary,
+  MACHINE_STATUS,
   NOT_ENOUGH_MATERIAL_MESSAGE,
 } from "./useProductionViewModel";
 export {

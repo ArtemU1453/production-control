@@ -32,6 +32,7 @@ import {
 import {
   CardView,
   EmptyState,
+  IdentifierInput,
   InfoRow,
   LoadingView,
   MetricCard,
@@ -554,8 +555,8 @@ export function ProductionView() {
                   <Input id="order-customer" className="rounded-2xl" disabled={locked} value={vm.order.customer} onChange={(e) => vm.updateOrder("customer", e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="order-number">Номер заказа</Label>
-                  <Input id="order-number" className="rounded-2xl" disabled={locked} value={vm.order.orderNumber} onChange={(e) => vm.updateOrder("orderNumber", e.target.value)} />
+                  <Label htmlFor="order-number">Код заказа (до 10 символов)</Label>
+                  <IdentifierInput id="order-number" disabled={locked} value={vm.order.orderNumber} onChange={(next) => vm.updateOrder("orderNumber", next)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

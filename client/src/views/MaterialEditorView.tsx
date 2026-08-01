@@ -16,10 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { CardView, LoadingView, PrimaryButton, ScreenScaffold } from "@/components";
+import { CardView, IdentifierInput, LoadingView, PrimaryButton, ScreenScaffold } from "@/components";
 import { useToast } from "@/hooks/use-toast";
 import { icons } from "@/resources/icons";
-import { MaterialStatus, MATERIAL_CODE_LENGTH } from "@/models";
+import { MaterialStatus } from "@/models";
 import { useMaterialEditorViewModel } from "@/viewmodels";
 
 /** Create/edit form for a material. Handles validation, unique-code checks and
@@ -76,13 +76,12 @@ export function MaterialEditorView({ materialId }: { materialId?: string }) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="material-code">Код ({MATERIAL_CODE_LENGTH} символов)</Label>
-                <Input
+                <Label htmlFor="material-code">Код (до 10 символов)</Label>
+                <IdentifierInput
                   id="material-code"
-                  className="rounded-2xl font-mono"
+                  className="font-mono"
                   value={vm.draft.code}
-                  maxLength={MATERIAL_CODE_LENGTH}
-                  onChange={(event) => vm.setField("code", event.target.value)}
+                  onChange={(next) => vm.setField("code", next)}
                   placeholder="AB123456"
                 />
               </div>

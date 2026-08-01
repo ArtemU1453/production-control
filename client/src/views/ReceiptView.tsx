@@ -3,6 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import {
   CardView,
   EmptyState,
+  IdentifierInput,
   LoadingView,
   PrimaryButton,
   ScreenScaffold,
@@ -113,12 +114,11 @@ export function ReceiptView() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2 space-y-1">
-                      <Label className="text-xs">Номер складского учёта</Label>
-                      <Input
-                        className="rounded-2xl"
+                      <Label className="text-xs">Код Джамбо (до 10 символов)</Label>
+                      <IdentifierInput
                         value={item.stockNumber}
-                        onChange={(event) => vm.setItemField(index, "stockNumber", event.target.value)}
-                        placeholder="J-0001"
+                        onChange={(next) => vm.setItemField(index, "stockNumber", next)}
+                        placeholder="J0001"
                       />
                     </div>
                     <div className="space-y-1">

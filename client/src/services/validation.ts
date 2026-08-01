@@ -1,4 +1,4 @@
-import { MATERIAL_CODE_LENGTH } from "../models";
+import { validateIdentifier } from "@shared/identifier";
 
 /** A validation outcome: `null` means valid, otherwise a user-facing message. */
 export type ValidationError = string | null;
@@ -7,15 +7,16 @@ export function validateRequired(value: string, label: string): ValidationError 
   return value.trim().length === 0 ? `${label}: заполните поле` : null;
 }
 
+/**
+ * Validates any system identifier (code / article / number) through the single
+ * shared rule set (A–Z, a–z, 0–9; 1…10 chars). Re-exported so every ViewModel
+ * uses one implementation.
+ */
+export { validateIdentifier } from "@shared/identifier";
+
+/** Material code — the same unified identifier rule as every other code. */
 export function validateMaterialCode(code: string): ValidationError {
-  const trimmed = code.trim();
-  if (trimmed.length === 0) {
-    return "Код материала: заполните поле";
-  }
-  if (trimmed.length !== MATERIAL_CODE_LENGTH) {
-    return `Код материала должен содержать ровно ${MATERIAL_CODE_LENGTH} символов`;
-  }
-  return null;
+  return validateIdentifier(code, "Код материала");
 }
 
 export function validatePositive(value: number, label: string): ValidationError {

@@ -1,18 +1,14 @@
-import { useMemo, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
   CheckCircle2,
-  Maximize2,
   PackageSearch,
   Pause,
   Play,
   PlayCircle,
-  Plus,
+  Recycle,
   Repeat2,
-  ScrollText,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -31,9 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Button,
-} from "@/components/ui/button";
 import {
   CardView,
   EmptyState,
@@ -62,7 +55,6 @@ import {
 } from "@/models";
 import { formatArea, formatMeters } from "@/extensions/number";
 import { useProductionViewModel, type ProductionLogEntry } from "@/viewmodels";
-import { CuttingScheme } from "./calculator/CuttingScheme";
 
 type ProductionVM = ReturnType<typeof useProductionViewModel>;
 
@@ -71,37 +63,61 @@ const destinationOptions: ReadonlyArray<SegmentOption<RollDestination>> = [
   { value: RollDestination.warehouse, label: "На склад" },
 ];
 
-const round1 = (v: number) => Math.round(v * 10) / 10;
-
 function timeOf(iso: string): string {
   return new Date(iso).toTimeString().slice(0, 5);
 }
 
-const LOG_LABEL: Record<string, string> = {
+const LOG_LABEL: Record<ProductionLogEntry["kind"], string> = {
   defect: "Брак",
   scrap: "Тех. отход",
   stop: "Остановка",
   comment: "Комментарий",
+  start: "Начало производства",
+  replace: "Замена Джамбо",
 };
 
-/** Order-status badge with the mockup's colour code (green/blue/orange/gray). */
+function journalCount(entry: ProductionLogEntry): string {
+  if (entry.kind === "defect") {
+    return `${entry.count ?? 1} рул.${entry.widthMm ? ` (${entry.widthMm} мм)` : ""}`;
+  }
+  if (entry.kind === "scrap") {
+    return entry.meters ? `${entry.meters} м` : "—";
+  }
+  return "—";
+}
+
+function journalDescription(entry: ProductionLogEntry): string {
+  const parts = [entry.reason, entry.note].filter((p): p is string => Boolean(p && p.length));
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+/** Order-status badge with the mockup's colour code (green/yellow/red). */
 function OrderStatusBadge({ vm }: { vm: ProductionVM }) {
+  const dot =
+    vm.phase === "running"
+      ? "bg-[hsl(142_71%_45%)]"
+      : vm.phase === "paused"
+        ? "bg-[hsl(38_92%_50%)]"
+        : vm.phase === "completed"
+          ? "bg-destructive"
+          : "bg-muted-foreground";
   const tone =
     vm.phase === "running"
-      ? "bg-primary/15 text-primary"
+      ? "text-[hsl(142_71%_38%)] dark:text-[hsl(142_71%_60%)]"
       : vm.phase === "paused"
-        ? "bg-[hsl(38_92%_50%)]/15 text-[hsl(38_92%_38%)] dark:text-[hsl(38_92%_60%)]"
+        ? "text-[hsl(38_92%_40%)] dark:text-[hsl(38_92%_62%)]"
         : vm.phase === "completed"
-          ? "bg-muted text-muted-foreground"
-          : "bg-[hsl(142_71%_45%)]/15 text-[hsl(142_71%_35%)] dark:text-[hsl(142_71%_55%)]";
+          ? "text-destructive"
+          : "text-muted-foreground";
   return (
-    <span className={cn(AppTypography.caption2, "inline-flex items-center rounded-full px-2 py-0.5", tone)}>
+    <span className={cn(AppTypography.footnote, "inline-flex items-center gap-1.5 font-semibold", tone)}>
+      <span className={cn("h-2 w-2 rounded-full", dot)} />
       {vm.orderStatusLabel}
     </span>
   );
 }
 
-/** A small KPI tile for the results grid. */
+/** A small KPI tile for the results grid — all tiles share the same size. */
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
     <div className="rounded-lg border border-card-border bg-card/60 px-2.5 py-1.5">
@@ -113,7 +129,48 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: "da
   );
 }
 
-/** Jumbo selection dialog (unchanged behaviour). */
+/** A compact labelled field cell — value shown read-only or as an input. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-0.5">
+      <div className={cn(AppTypography.caption2, "text-muted-foreground")}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function StaticValue({ children }: { children: ReactNode }) {
+  return <div className={cn(AppTypography.footnote, "truncate font-medium")}>{children ?? "—"}</div>;
+}
+
+function LabeledInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-[11px]">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-2xl"
+      />
+    </div>
+  );
+}
+
+/** Jumbo selection dialog (unchanged selection behaviour). */
 function JumboPicker({
   jumbos,
   materialNameFor,
@@ -178,75 +235,177 @@ function JumboPicker({
   );
 }
 
-/** Compact overview cutting scheme with zoom controls and a fullscreen view. */
-function SchemeBox({ plan }: { plan: NonNullable<ProductionVM["plan"]> }) {
-  const [zoom, setZoom] = useState(1);
-  const clamp = (z: number) => Math.max(0.6, Math.min(2, Math.round(z * 10) / 10));
+/** «Добавить брак» — opens a form and only records on confirm. */
+function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [count, setCount] = useState("1");
+  const [widthMm, setWidthMm] = useState("");
+  const [windingM, setWindingM] = useState("");
+  const [comment, setComment] = useState("");
+
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      setReason("");
+      setCount("1");
+      setWidthMm(vm.params.rollWidthMm ? String(vm.params.rollWidthMm) : "");
+      setWindingM(vm.params.rollLengthM ? String(vm.params.rollLengthM) : "");
+      setComment("");
+    }
+    setOpen(next);
+  };
+
+  const submit = () => {
+    vm.addDefect({
+      count: Number(count) || 1,
+      reason: reason.trim() || undefined,
+      widthMm: widthMm ? Number(widthMm) : undefined,
+      windingM: windingM ? Number(windingM) : undefined,
+      comment: comment.trim() || undefined,
+    });
+    toast({ title: "Брак зафиксирован" });
+    setOpen(false);
+  };
+
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Схема нарезки</span>
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="secondary" className="h-7 w-7" aria-label="Уменьшить" onClick={() => setZoom((z) => clamp(z - 0.2))}>
-            <ZoomOut className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => setZoom(1)}>
-            100%
-          </Button>
-          <Button size="icon" variant="secondary" className="h-7 w-7" aria-label="Увеличить" onClick={() => setZoom((z) => clamp(z + 0.2))}>
-            <ZoomIn className="h-3.5 w-3.5" />
-          </Button>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="icon" variant="secondary" className="h-7 w-7" aria-label="Развернуть">
-                <Maximize2 className="h-3.5 w-3.5" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-[95vw] overflow-auto">
-              <DialogHeader>
-                <DialogTitle>Схема нарезки</DialogTitle>
-              </DialogHeader>
-              <CuttingScheme plan={plan} />
-            </DialogContent>
-          </Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <SecondaryButton icon={AlertTriangle} className="h-9 justify-start" disabled={disabled}>
+          Добавить брак
+        </SecondaryButton>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Регистрация брака</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          <LabeledInput label="Причина брака" value={reason} onChange={setReason} placeholder="Напр. разрыв материала" />
+          <div className="grid grid-cols-3 gap-2">
+            <LabeledInput label="Кол-во рул." type="number" value={count} onChange={setCount} />
+            <LabeledInput label="Ширина, мм" type="number" value={widthMm} onChange={setWidthMm} />
+            <LabeledInput label="Намотка, м" type="number" value={windingM} onChange={setWindingM} />
+          </div>
+          <LabeledInput label="Комментарий" value={comment} onChange={setComment} />
+          <p className={cn(AppTypography.caption, "text-muted-foreground")}>
+            Запись привязывается к текущему Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"}: обновит статистику брака и
+            уменьшит остаток Джамбо.
+          </p>
+          <PrimaryButton fullWidth icon={CheckCircle2} onClick={submit}>
+            Подтвердить
+          </PrimaryButton>
         </div>
-      </div>
-      <div className="max-h-[120px] overflow-auto rounded-xl border border-card-border bg-muted/20 p-1.5">
-        <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${100 / zoom}%` }}>
-          <CuttingScheme plan={plan} />
-        </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-/** Full production journal dialog. */
-function JournalDialog({ log }: { log: ProductionLogEntry[] }) {
+/** «Добавить тех. отход» — opens a form and only records on confirm. */
+function ScrapDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [meters, setMeters] = useState("");
+  const [reason, setReason] = useState("");
+  const [comment, setComment] = useState("");
+
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      setMeters("");
+      setReason("");
+      setComment("");
+    }
+    setOpen(next);
+  };
+
+  const submit = () => {
+    vm.addScrap({
+      meters: Number(meters) || 0,
+      reason: reason.trim() || undefined,
+      comment: comment.trim() || undefined,
+    });
+    toast({ title: "Тех. отход зафиксирован" });
+    setOpen(false);
+  };
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="secondary" className="h-7 px-2 text-xs">
-          <ScrollText className="mr-1 h-3.5 w-3.5" /> Все операции
-        </Button>
+        <SecondaryButton icon={Recycle} className="h-9 justify-start" disabled={disabled}>
+          Добавить тех. отход
+        </SecondaryButton>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Технологический отход</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          <LabeledInput label="Количество, м" type="number" value={meters} onChange={setMeters} />
+          <LabeledInput label="Причина" value={reason} onChange={setReason} placeholder="Напр. заправка линии" />
+          <LabeledInput label="Комментарий" value={comment} onChange={setComment} />
+          <p className={cn(AppTypography.caption, "text-muted-foreground")}>
+            Уменьшит остаток текущего Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"} и обновит статистику.
+          </p>
+          <PrimaryButton fullWidth icon={CheckCircle2} onClick={submit}>
+            Подтвердить
+          </PrimaryButton>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** «Заменить Джамбо» — books the current Jumbo and continues on the chosen one. */
+function ReplaceJumboDialog({
+  vm,
+  materialNameFor,
+  disabled,
+}: {
+  vm: ProductionVM;
+  materialNameFor: (jumbo: Jumbo) => string;
+  disabled: boolean;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const pick = async (jumbo: Jumbo) => {
+    await vm.continueOnNewJumbo(jumbo);
+    toast({ title: "Джамбо заменён, заказ продолжается" });
+    setOpen(false);
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled={disabled || vm.continuing}>
+          Заменить Джамбо
+        </SecondaryButton>
       </DialogTrigger>
       <DialogContent className="max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Журнал операций</DialogTitle>
+          <DialogTitle>Замена Джамбо</DialogTitle>
         </DialogHeader>
-        {log.length === 0 ? (
-          <p className={cn(AppTypography.footnote, "text-muted-foreground")}>Записей пока нет.</p>
+        <p className={cn(AppTypography.footnote, "text-muted-foreground")}>
+          Текущий Джамбо будет закрыт с фиксацией остатка, а заказ продолжится на выбранном.
+        </p>
+        {vm.eligibleForContinue.length === 0 ? (
+          <EmptyState icon={icons.warehouse} title="Нет доступных Джамбо" message="Все подходящие Джамбо уже задействованы." />
         ) : (
-          <ul className="space-y-1">
-            {log.map((entry) => (
-              <li key={entry.id} className={cn(AppTypography.caption, "flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-2 py-1")}>
-                <span className="text-muted-foreground">
-                  {timeOf(entry.at)} · {LOG_LABEL[entry.kind] ?? entry.kind}
-                  {entry.count ? ` ×${entry.count}` : ""}
+          <div className="space-y-2">
+            {vm.eligibleForContinue.map((jumbo) => (
+              <button
+                key={jumbo.id}
+                type="button"
+                disabled={vm.continuing}
+                onClick={() => void pick(jumbo)}
+                className="w-full rounded-xl border bg-card/60 p-2.5 text-left transition-colors hover:border-primary disabled:opacity-60"
+              >
+                <span className={AppTypography.footnote}>
+                  № {jumbo.stockNumber} · {jumbo.materialCode}
                 </span>
-                {entry.note ? <span className="truncate">{entry.note}</span> : null}
-              </li>
+                <div className={cn(AppTypography.caption, "mt-1 text-muted-foreground")}>
+                  {materialNameFor(jumbo)} · {jumbo.widthMm} мм · Остаток: {formatMeters(jumbo.currentRemainderM)}
+                </div>
+              </button>
             ))}
-          </ul>
+          </div>
         )}
       </DialogContent>
     </Dialog>
@@ -308,32 +467,22 @@ export function ProductionView() {
   const vm = useProductionViewModel();
   const { toast } = useToast();
   const locked = vm.locked;
+  const plan = vm.plan;
 
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
-
-  const plan = vm.plan;
-  const scrapCount = useMemo(
-    () => vm.productionLog.filter((e) => e.kind === "scrap").length,
-    [vm.productionLog],
-  );
-  const rollAreaM2 = plan ? round1((plan.roll_width_mm / 1000) * plan.roll_length_m) : 0;
-  const defectAreaM2 = round1(vm.defectCount * rollAreaM2);
-  const recentLog = vm.productionLog.slice(0, 5);
 
   const target = vm.orderTotalRolls ?? vm.params.orderRolls;
   const projected = vm.producedMain + (vm.planStatus === "ok" && plan ? plan.total_main_rolls : 0);
   const progress = target > 0 ? Math.min(100, Math.round((projected / target) * 100)) : 0;
-  const remainderM = vm.selectedJumbo?.currentRemainderM ?? 0;
   const remainderPct =
     vm.selectedJumbo && vm.selectedJumbo.initialWindingM > 0
-      ? Math.round((vm.selectedJumbo.currentRemainderM / vm.selectedJumbo.initialWindingM) * 100)
+      ? Math.round((vm.liveRemainderM / vm.selectedJumbo.initialWindingM) * 100)
       : 0;
+  const yieldPercent =
+    plan && plan.total_area_m2 > 0 ? Math.round((plan.useful_area_m2 / plan.total_area_m2) * 100) : null;
 
-  // Readiness breakdown for the start button. Purely display: the button stays
-  // gated by the single source of truth `vm.canStart` (desktop, mobile and PWA
-  // alike) — this only surfaces *which* required field is still missing so a
-  // disabled button is never a mystery. Дата/Время/Комментарий не входят в
-  // проверку (дата и время подставляются автоматически).
+  // Single source of truth for the start button (vm.canStart) — this only
+  // surfaces which required field is still missing.
   const startRequirements = [
     { ok: Boolean(vm.selectedJumbo), label: "Джамбо" },
     { ok: vm.order.orderNumber.trim().length > 0, label: "Код заказа" },
@@ -354,10 +503,6 @@ export function ProductionView() {
       toast({ title: strings.production.successNotice });
     }
   };
-  const onContinue = async (jumbo: Jumbo) => {
-    await vm.continueOnNewJumbo(jumbo);
-    toast({ title: "Заказ продолжается на новом Джамбо" });
-  };
 
   return (
     <ScreenScaffold title={strings.production.title} wide>
@@ -367,62 +512,66 @@ export function ProductionView() {
         <CompletionSummaryCard vm={vm} />
       ) : (
         <div className="space-y-3 pb-2">
-          {/* ── Top info bar ─────────────────────────────────────────── */}
+          {/* ── Order header (one compact row) ───────────────────────── */}
           <CardView className="p-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-              <div className="space-y-1">
-                <Label className="text-[11px]">Код заказа</Label>
-                <IdentifierInput
-                  id="order-number"
-                  disabled={locked}
-                  value={vm.order.orderNumber}
-                  onChange={(next) => vm.updateOrder("orderNumber", next)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Заказчик</Label>
-                <Input id="order-customer" disabled={locked} value={vm.order.customer} onChange={(e) => vm.updateOrder("customer", e.target.value)} className="rounded-2xl" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Дата</Label>
-                <Input type="date" disabled value={vm.order.date} readOnly className="rounded-2xl" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Время</Label>
-                <Input type="time" disabled value={vm.order.time} readOnly className="rounded-2xl" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Статус</Label>
-                <div className="flex h-8 items-center">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
+              <Field label="Заказ">
+                {locked ? (
+                  <StaticValue>{vm.order.orderNumber || "—"}</StaticValue>
+                ) : (
+                  <IdentifierInput id="order-number" value={vm.order.orderNumber} onChange={(v) => vm.updateOrder("orderNumber", v)} />
+                )}
+              </Field>
+              <Field label="Заказчик">
+                {locked ? (
+                  <StaticValue>{vm.order.customer || "—"}</StaticValue>
+                ) : (
+                  <Input id="order-customer" value={vm.order.customer} onChange={(e) => vm.updateOrder("customer", e.target.value)} className="rounded-2xl" />
+                )}
+              </Field>
+              <Field label="Станок">
+                {locked ? (
+                  <StaticValue>{machineTitle(vm.order.machine)}</StaticValue>
+                ) : (
+                  <Select value={vm.order.machine} onValueChange={(v) => vm.updateOrder("machine", v as Machine)}>
+                    <SelectTrigger className="rounded-2xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {machineOrder.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {machineTitle(m)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </Field>
+              <Field label="Оператор">
+                {locked ? (
+                  <StaticValue>{vm.order.operator || "—"}</StaticValue>
+                ) : (
+                  <Input id="order-operator" value={vm.order.operator} onChange={(e) => vm.updateOrder("operator", e.target.value)} className="rounded-2xl" />
+                )}
+              </Field>
+              <Field label="Дата">
+                <StaticValue>{vm.order.date}</StaticValue>
+              </Field>
+              <Field label="Время">
+                <StaticValue>{vm.order.time}</StaticValue>
+              </Field>
+              <Field label="Статус">
+                <div className="flex h-6 items-center">
                   <OrderStatusBadge vm={vm} />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Станок</Label>
-                <Select value={vm.order.machine} disabled={locked} onValueChange={(v) => vm.updateOrder("machine", v as Machine)}>
-                  <SelectTrigger className="rounded-2xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {machineOrder.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {machineTitle(m)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px]">Оператор</Label>
-                <Input id="order-operator" disabled={locked} value={vm.order.operator} onChange={(e) => vm.updateOrder("operator", e.target.value)} className="rounded-2xl" />
-              </div>
+              </Field>
             </div>
             {locked ? (
               <div className={cn(AppTypography.caption, "mt-2 text-amber-600 dark:text-amber-400")}>{vm.busyMachineMessage}</div>
             ) : null}
           </CardView>
 
-          {/* ── Jumbo bar (one line) ─────────────────────────────────── */}
+          {/* ── Jumbo + nesting parameters (compact info card) ───────── */}
           <CardView className="p-3">
             {vm.selectedJumbo ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -433,7 +582,7 @@ export function ProductionView() {
                 <span className={AppTypography.caption}>Ширина: {vm.selectedJumbo.widthMm} мм</span>
                 <span className={AppTypography.caption}>Намотка: {formatMeters(vm.selectedJumbo.initialWindingM)}</span>
                 <span className={AppTypography.caption}>
-                  Остаток: <span className="font-semibold">{formatMeters(remainderM)}</span> · {remainderPct}%
+                  Остаток: <span className="font-semibold">{formatMeters(vm.liveRemainderM)}</span> · {remainderPct}%
                 </span>
                 {!locked ? (
                   <div className="ml-auto">
@@ -449,78 +598,101 @@ export function ProductionView() {
                 <JumboPicker jumbos={vm.availableJumbos} materialNameFor={materialNameFor} onPick={vm.selectJumbo} label="Выбрать Джамбо" />
               </div>
             )}
+
+            <div className="mt-2.5 border-t border-card-border pt-2.5">
+              {locked ? (
+                <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-4 gap-y-1")}>
+                  <span className="text-muted-foreground">Параметры нарезки:</span>
+                  <span>Ширина <span className="font-medium text-foreground">{vm.params.rollWidthMm} мм</span></span>
+                  <span>Длина <span className="font-medium text-foreground">{vm.params.rollLengthM} м</span></span>
+                  <span>Кол-во <span className="font-medium text-foreground">{vm.params.orderRolls} шт.</span></span>
+                  <span>Доп. размер <span className="font-medium text-foreground">{vm.params.additionalWidthMm ? `${vm.params.additionalWidthMm} мм` : "авто"}</span></span>
+                  <span>Назначение <span className="font-medium text-foreground">{vm.params.additionalDestination === RollDestination.order ? "в заказ" : "на склад"}</span></span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="w-24 space-y-1">
+                    <Label className="text-[11px]">Ширина, мм</Label>
+                    <Input type="number" step="0.1" value={vm.params.rollWidthMm || ""} onChange={(e) => vm.updateParam("rollWidthMm", Number(e.target.value))} className="rounded-2xl" />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-[11px]">Длина, м</Label>
+                    <Input type="number" value={vm.params.rollLengthM || ""} onChange={(e) => vm.updateParam("rollLengthM", Number(e.target.value))} className="rounded-2xl" />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-[11px]">Кол-во, шт</Label>
+                    <Input type="number" value={vm.params.orderRolls || ""} onChange={(e) => vm.updateParam("orderRolls", Number(e.target.value))} className="rounded-2xl" />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-[11px]">Доп. размер</Label>
+                    <Input type="number" step="0.1" value={vm.params.additionalWidthMm ?? ""} placeholder="Авто" onChange={(e) => vm.updateParam("additionalWidthMm", e.target.value === "" ? undefined : Number(e.target.value))} className="rounded-2xl" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Назначение доп.</Label>
+                    <SegmentedControl options={destinationOptions} value={vm.params.additionalDestination} onChange={(v) => vm.updateParam("additionalDestination", v)} aria-label="Назначение дополнительных рулонов" />
+                  </div>
+                </div>
+              )}
+              {vm.planStatus === "insufficient" ? (
+                <div className={cn(AppTypography.caption, "mt-2 flex items-start gap-1.5 text-amber-600 dark:text-amber-400")}>
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{vm.planError}</span>
+                </div>
+              ) : vm.planStatus === "error" ? (
+                <div className={cn(AppTypography.caption, "mt-2 text-destructive")}>{vm.planError}</div>
+              ) : null}
+            </div>
           </CardView>
 
-          {/* ── Middle: 60 / 40 ──────────────────────────────────────── */}
-          <div className="grid gap-3 xl:grid-cols-5">
-            {/* Left ~60% */}
+          {/* ── Main area: KPI + journal (left), operations (right) ──── */}
+          <div className="grid gap-3 xl:grid-cols-4">
             <div className="space-y-3 xl:col-span-3">
-              <CardView title="Параметры рулона" icon={icons.cut} className="p-3">
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Ширина, мм</Label>
-                    <Input type="number" step="0.1" disabled={locked} value={vm.params.rollWidthMm || ""} onChange={(e) => vm.updateParam("rollWidthMm", Number(e.target.value))} className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Длина, м</Label>
-                    <Input type="number" disabled={locked} value={vm.params.rollLengthM || ""} onChange={(e) => vm.updateParam("rollLengthM", Number(e.target.value))} className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Кол-во, шт</Label>
-                    <Input type="number" disabled={locked} value={vm.params.orderRolls || ""} onChange={(e) => vm.updateParam("orderRolls", Number(e.target.value))} className="rounded-2xl" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px]">Доп. размер</Label>
-                    <Input type="number" step="0.1" disabled={locked} value={vm.params.additionalWidthMm ?? ""} placeholder="Авто" onChange={(e) => vm.updateParam("additionalWidthMm", e.target.value === "" ? undefined : Number(e.target.value))} className="rounded-2xl" />
-                  </div>
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Label className="text-[11px] text-muted-foreground">Назначение доп.</Label>
-                  <SegmentedControl options={destinationOptions} value={vm.params.additionalDestination} onChange={(v) => vm.updateParam("additionalDestination", v)} aria-label="Назначение дополнительных рулонов" />
+              <CardView title="Результаты расчёта" icon={icons.dashboard} className="p-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <Tile label="Выход" value={yieldPercent !== null ? `${yieldPercent}%` : "—"} />
+                  <Tile label="Отход" value={plan ? `${plan.waste_percent.toFixed(1)}%` : "—"} tone={plan && plan.waste_percent > 7 ? "danger" : undefined} />
+                  <Tile label="Рулонов" value={plan ? `${plan.total_rolls}` : "—"} />
+                  <Tile label="Циклов" value={plan ? `${plan.cycles_used}` : "—"} />
+                  <Tile label="Использовано" value={plan ? formatMeters(plan.used_length_m) : "—"} />
+                  <Tile label="Остаток" value={plan ? formatMeters(plan.remaining_jumbo_m) : "—"} />
                 </div>
               </CardView>
 
-              <CardView className="p-3">
-                {plan && vm.planStatus === "ok" ? (
-                  <SchemeBox plan={plan} />
-                ) : vm.planStatus === "insufficient" ? (
-                  <div className={cn(AppTypography.footnote, "flex items-start gap-2 text-amber-600 dark:text-amber-400")}>
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{vm.planError} {plan && plan.total_main_rolls > 0 ? `Даёт ${plan.total_main_rolls} из ${vm.params.orderRolls}.` : ""}</span>
+              {/* Journal — the main working element of the screen */}
+              <CardView title="Журнал операций" icon={icons.gauge} className="p-3">
+                {vm.productionLog.length === 0 ? (
+                  <div className={cn(AppTypography.caption, "py-6 text-center text-muted-foreground")}>
+                    {locked ? "Событий пока нет." : "Журнал заполняется во время производства."}
                   </div>
                 ) : (
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>
-                    {vm.selectedJumbo ? vm.planError ?? "Заполните параметры рулона." : "Выберите Джамбо для расчёта."}
-                  </div>
-                )}
-              </CardView>
-
-              {/* Journal under the scheme */}
-              <CardView className="p-3">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Журнал операций</span>
-                  <JournalDialog log={vm.productionLog} />
-                </div>
-                {recentLog.length === 0 ? (
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>Событий пока нет.</div>
-                ) : (
-                  <div className="overflow-x-auto">
+                  <div className="max-h-[46vh] overflow-auto">
                     <table className="w-full text-left">
-                      <thead>
+                      <thead className="sticky top-0 bg-card">
                         <tr className={cn(AppTypography.caption2, "text-muted-foreground")}>
-                          <th className="py-1 pr-2 font-medium">Время</th>
-                          <th className="py-1 pr-2 font-medium">Операция</th>
-                          <th className="py-1 pr-2 font-medium">Кол-во</th>
-                          <th className="py-1 font-medium">Описание</th>
+                          <th className="py-1.5 pr-3 font-medium">Время</th>
+                          <th className="py-1.5 pr-3 font-medium">Операция</th>
+                          <th className="py-1.5 pr-3 font-medium">Количество</th>
+                          <th className="py-1.5 pr-3 font-medium">Описание</th>
+                          <th className="py-1.5 font-medium">Оператор</th>
                         </tr>
                       </thead>
-                      <tbody className={cn(AppTypography.caption, "tabular-nums")}>
-                        {recentLog.map((e) => (
-                          <tr key={e.id} className="border-t border-card-border">
-                            <td className="py-1 pr-2">{timeOf(e.at)}</td>
-                            <td className="py-1 pr-2">{LOG_LABEL[e.kind] ?? e.kind}</td>
-                            <td className="py-1 pr-2">{e.count ?? "—"}</td>
-                            <td className="py-1 truncate text-muted-foreground">{e.note ?? "—"}</td>
+                      <tbody className={cn(AppTypography.caption)}>
+                        {vm.productionLog.map((entry) => (
+                          <tr key={entry.id} className="border-t border-card-border align-top">
+                            <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">{timeOf(entry.at)}</td>
+                            <td className="py-1.5 pr-3">
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  entry.kind === "defect" ? "text-destructive" : entry.kind === "start" ? "text-primary" : "",
+                                )}
+                              >
+                                {LOG_LABEL[entry.kind]}
+                              </span>
+                            </td>
+                            <td className="py-1.5 pr-3 tabular-nums">{journalCount(entry)}</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">{journalDescription(entry)}</td>
+                            <td className="py-1.5 text-muted-foreground">{entry.operator ?? "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -530,64 +702,43 @@ export function ProductionView() {
               </CardView>
             </div>
 
-            {/* Right ~40% */}
-            <div className="space-y-3 xl:col-span-2">
-              <CardView title="Результаты расчёта" icon={icons.dashboard} className="p-3">
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
-                  <Tile label="Выход" value={plan ? `${Math.round((plan.useful_area_m2 / Math.max(1, plan.total_area_m2)) * 100)}%` : "—"} />
-                  <Tile label="Отход" value={plan ? `${plan.waste_percent.toFixed(1)}%` : "—"} tone={plan && plan.waste_percent > 7 ? "danger" : undefined} />
-                  <Tile label="Рулонов" value={plan ? `${plan.total_rolls}` : "—"} />
-                  <Tile label="Циклов" value={plan ? `${plan.cycles_used}` : "—"} />
-                  <Tile label="Использовано" value={plan ? formatMeters(plan.used_length_m) : "—"} />
-                  <Tile label="Остаток" value={plan ? formatMeters(plan.remaining_jumbo_m) : "—"} />
-                  <Tile label="Полезная" value={plan ? formatArea(plan.useful_area_m2) : "—"} />
-                  <Tile label="Потери" value={plan ? formatArea(plan.waste_area_m2) : "—"} />
-                </div>
-              </CardView>
-
-              {/* Vertical operations buttons — equal height */}
+            {/* Right: operations + defect/scrap summary */}
+            <div className="space-y-3">
               <CardView title="Операции" icon={icons.gauge} headerTone="accent" className="p-3">
                 <div className="flex flex-col gap-2">
-                  <SecondaryButton icon={Plus} className="h-9 justify-start" disabled={!locked} onClick={() => { vm.addDefect(1); toast({ title: "Брак зафиксирован" }); }}>
-                    Добавить брак
-                  </SecondaryButton>
-                  <SecondaryButton icon={Plus} className="h-9 justify-start" disabled={!locked} onClick={() => { vm.addScrap(); toast({ title: "Тех. отход зафиксирован" }); }}>
-                    Добавить тех. отход
-                  </SecondaryButton>
-                  {vm.canContinue ? (
-                    <ReplaceJumboButton vm={vm} materialNameFor={materialNameFor} onContinue={onContinue} />
-                  ) : (
-                    <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled>
-                      Заменить Джамбо
-                    </SecondaryButton>
-                  )}
-                  {vm.phase === "running" ? (
-                    <SecondaryButton icon={Pause} className="h-9 justify-start" onClick={vm.pauseProduction}>
-                      Приостановить заказ
-                    </SecondaryButton>
-                  ) : vm.phase === "paused" ? (
-                    <SecondaryButton icon={Play} className="h-9 justify-start" onClick={vm.resumeProduction}>
-                      Продолжить заказ
-                    </SecondaryButton>
-                  ) : null}
                   {locked ? (
-                    <PrimaryButton icon={CheckCircle2} className="h-9" fullWidth loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
-                      Завершить производство
-                    </PrimaryButton>
+                    <>
+                      <DefectDialog vm={vm} disabled={!locked} />
+                      <ScrapDialog vm={vm} disabled={!locked} />
+                      <ReplaceJumboDialog vm={vm} materialNameFor={materialNameFor} disabled={vm.eligibleForContinue.length === 0} />
+                      {vm.phase === "running" ? (
+                        <SecondaryButton icon={Pause} className="h-9 justify-start" onClick={vm.pauseProduction}>
+                          Приостановить заказ
+                        </SecondaryButton>
+                      ) : (
+                        <SecondaryButton icon={Play} className="h-9 justify-start" onClick={vm.resumeProduction}>
+                          Продолжить заказ
+                        </SecondaryButton>
+                      )}
+                      <PrimaryButton icon={CheckCircle2} className="mt-1 h-11 text-base" fullWidth loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
+                        Завершить производство
+                      </PrimaryButton>
+                    </>
                   ) : (
-                    <PrimaryButton icon={PlayCircle} className="h-9" fullWidth disabled={!vm.canStart} onClick={onStart}>
-                      Запустить производство
-                    </PrimaryButton>
+                    <>
+                      <PrimaryButton icon={PlayCircle} className="h-11 text-base" fullWidth disabled={!vm.canStart} onClick={onStart}>
+                        Запустить производство
+                      </PrimaryButton>
+                      {!vm.canStart && missingRequirements.length > 0 ? (
+                        <p className={cn(AppTypography.caption, "text-muted-foreground")}>
+                          Для запуска заполните: {missingRequirements.join(", ")}
+                        </p>
+                      ) : null}
+                    </>
                   )}
-                  {!locked && !vm.canStart && missingRequirements.length > 0 ? (
-                    <p className={cn(AppTypography.caption, "text-muted-foreground")}>
-                      Для запуска заполните: {missingRequirements.join(", ")}
-                    </p>
-                  ) : null}
                 </div>
               </CardView>
 
-              {/* Defect + tech-scrap */}
               <div className="grid grid-cols-2 gap-3">
                 <CardView className="p-3">
                   <div className="flex items-center justify-between">
@@ -595,84 +746,32 @@ export function ProductionView() {
                     <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
                   </div>
                   <div className={cn(AppTypography.title2, "mt-1 tabular-nums text-destructive")}>{vm.defectCount}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>рул. · {formatArea(defectAreaM2)}</div>
-                  <SecondaryButton icon={Plus} fullWidth className="mt-2 h-8" disabled={!locked} onClick={() => vm.addDefect(1)}>
-                    Добавить
-                  </SecondaryButton>
+                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>рул. · {formatArea(vm.defectAreaM2)}</div>
                 </CardView>
                 <CardView className="p-3">
-                  <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Тех. отход</span>
-                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>{scrapCount}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>записей · тек. Джамбо</div>
-                  <SecondaryButton icon={Plus} fullWidth className="mt-2 h-8" disabled={!locked} onClick={() => vm.addScrap()}>
-                    Добавить
-                  </SecondaryButton>
+                  <div className="flex items-center justify-between">
+                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Тех. отход</span>
+                    <Recycle className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>{vm.scrapCount}</div>
+                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>записей · {formatMeters(vm.scrapMetersM)}</div>
                 </CardView>
               </div>
             </div>
           </div>
 
-          {/* ── Bottom status strip ──────────────────────────────────── */}
+          {/* ── Bottom status bar (sticky) ───────────────────────────── */}
           <div className="z-10 rounded-xl border border-card-border bg-background/90 px-3 py-1.5 backdrop-blur lg:sticky lg:bottom-0">
-            <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-4 gap-y-1")}>
+            <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-5 gap-y-1")}>
               <span>Прогресс: <span className="font-semibold text-foreground">{progress}%</span></span>
-              <span>Брак: <span className="font-semibold text-destructive">{vm.defectCount}</span> шт.</span>
-              <span>Тех. отход: <span className="font-semibold text-foreground">{scrapCount}</span></span>
-              <span>Полезная: <span className="font-semibold text-foreground">{plan ? formatArea(plan.useful_area_m2) : "—"}</span></span>
-              <span className="ml-auto">Остаток Джамбо: <span className="font-semibold text-foreground">{vm.selectedJumbo ? formatMeters(remainderM) : "—"}</span></span>
+              <span>Брак: <span className="font-semibold text-destructive">{vm.defectCount}</span> рул. · {formatArea(vm.defectAreaM2)}</span>
+              <span>Тех. отход: <span className="font-semibold text-foreground">{formatMeters(vm.scrapMetersM)}</span></span>
+              <span>Полезная площадь: <span className="font-semibold text-foreground">{plan ? formatArea(plan.useful_area_m2) : "—"}</span></span>
+              <span className="ml-auto">Остаток Джамбо: <span className="font-semibold text-foreground">{vm.selectedJumbo ? formatMeters(vm.liveRemainderM) : "—"}</span></span>
             </div>
           </div>
         </div>
       )}
     </ScreenScaffold>
-  );
-}
-
-/** "Заменить Джамбо" — reuses the continuation flow (books current, switches). */
-function ReplaceJumboButton({
-  vm,
-  materialNameFor,
-  onContinue,
-}: {
-  vm: ProductionVM;
-  materialNameFor: (jumbo: Jumbo) => string;
-  onContinue: (jumbo: Jumbo) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled={vm.continuing}>
-          Заменить Джамбо
-        </SecondaryButton>
-      </DialogTrigger>
-      <DialogContent className="max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Продолжение выполнения заказа</DialogTitle>
-        </DialogHeader>
-        <p className={cn(AppTypography.footnote, "text-muted-foreground")}>
-          Текущего Джамбо недостаточно. Выберите следующий, чтобы продолжить заказ.
-        </p>
-        <div className="space-y-2">
-          {vm.eligibleForContinue.map((jumbo) => (
-            <button
-              key={jumbo.id}
-              type="button"
-              disabled={vm.continuing}
-              onClick={() => {
-                onContinue(jumbo);
-                setOpen(false);
-              }}
-              className="w-full rounded-xl border bg-card/60 p-2.5 text-left transition-colors hover:border-primary disabled:opacity-60"
-            >
-              <span className={AppTypography.footnote}>№ {jumbo.stockNumber} · {jumbo.materialCode}</span>
-              <div className={cn(AppTypography.caption, "mt-1 text-muted-foreground")}>
-                {materialNameFor(jumbo)} · {jumbo.widthMm} мм · Остаток: {formatMeters(jumbo.currentRemainderM)}
-              </div>
-            </button>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

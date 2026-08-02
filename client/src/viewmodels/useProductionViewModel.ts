@@ -34,13 +34,49 @@ export type ProductionPlanStatus = "idle" | "ok" | "insufficient" | "error";
 export type OrderPhase = "setup" | "running" | "paused" | "completed";
 
 /** A production-journal entry recorded while an order is in work. */
-export type ProductionLogKind = "defect" | "scrap" | "stop" | "comment";
+export type ProductionLogKind = "defect" | "scrap" | "stop" | "comment" | "start" | "replace";
 export interface ProductionLogEntry {
   id: string;
   kind: ProductionLogKind;
   at: string;
   note?: string;
   count?: number;
+  /** Причина (брака / отхода). */
+  reason?: string;
+  /** Ширина, мм (для брака). */
+  widthMm?: number;
+  /** Намотка бракованного рулона, м. */
+  windingM?: number;
+  /** Метраж, списанный этой операцией (брак или тех. отход), м. */
+  meters?: number;
+  /** Площадь, м² (для брака). */
+  areaM2?: number;
+  /** Оператор, зафиксировавший операцию. */
+  operator?: string;
+}
+
+/** Detailed defect record entered by the operator during production. */
+export interface DefectInput {
+  /** Количество бракованных рулонов. */
+  count: number;
+  /** Причина брака. */
+  reason?: string;
+  /** Ширина рулона, мм. */
+  widthMm?: number;
+  /** Намотка одного рулона, м. */
+  windingM?: number;
+  /** Комментарий. */
+  comment?: string;
+}
+
+/** Detailed technological-scrap record entered during production. */
+export interface ScrapInput {
+  /** Количество метров тех. отхода. */
+  meters: number;
+  /** Причина. */
+  reason?: string;
+  /** Комментарий. */
+  comment?: string;
 }
 
 /** One Jumbo's contribution to a multi-Jumbo order chain. */
@@ -198,11 +234,22 @@ interface ProductionViewModel {
   newOrder: () => void;
   /** In-session production journal (defects, scrap, stops, notes). */
   productionLog: ProductionLogEntry[];
-  addDefect: (count?: number, note?: string) => void;
-  addScrap: (note?: string) => void;
+  addDefect: (detail: DefectInput) => void;
+  addScrap: (detail: ScrapInput) => void;
   addStop: (note?: string) => void;
   addNote: (note: string) => void;
   defectCount: number;
+  /** Суммарная площадь брака за смену, м². */
+  defectAreaM2: number;
+  /** Списанный на брак метраж за смену, м. */
+  defectMetersM: number;
+  /** Количество записей тех. отхода. */
+  scrapCount: number;
+  /** Суммарный тех. отход за смену, м. */
+  scrapMetersM: number;
+  /** Живой остаток текущего Джамбо за вычетом брака и тех. отхода, м (только
+   *  отображение — не мутирует запись Джамбо и не влияет на расчёт/списание). */
+  liveRemainderM: number;
   /** Final summary shown in the "completed" phase. */
   completionSummary: CompletionSummary | null;
   /** Status label for a machine (свободен / выполняет заказ …). */
@@ -441,6 +488,16 @@ export function useProductionViewModel(): ProductionViewModel {
         setSelectedJumbo(next);
         setOutcome(null);
         setOrderSummary(null);
+        setProductionLog((log) => [
+          {
+            id: makeId(),
+            kind: "replace",
+            at: new Date().toISOString(),
+            note: `Джамбо № ${next.stockNumber}`,
+            operator: order.operator || undefined,
+          },
+          ...log,
+        ]);
         await loadAvailable();
       } finally {
         setContinuing(false);
@@ -543,9 +600,16 @@ export function useProductionViewModel(): ProductionViewModel {
   // ── Production lifecycle ──────────────────────────────────────────────────
   const locked = phase === "running" || phase === "paused";
   const canStart = phase === "setup" && canExecute;
-  const defectCount = productionLog
-    .filter((entry) => entry.kind === "defect")
-    .reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+  const defectEntries = productionLog.filter((entry) => entry.kind === "defect");
+  const scrapEntries = productionLog.filter((entry) => entry.kind === "scrap");
+  const defectCount = defectEntries.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+  const defectAreaM2 = round1(defectEntries.reduce((sum, entry) => sum + (entry.areaM2 ?? 0), 0));
+  const defectMetersM = round1(defectEntries.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
+  const scrapCount = scrapEntries.length;
+  const scrapMetersM = round1(scrapEntries.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
+  const liveRemainderM = selectedJumbo
+    ? Math.max(0, round1(selectedJumbo.currentRemainderM - defectMetersM - scrapMetersM))
+    : 0;
 
   const orderStatusLabel = (() => {
     if (phase === "completed") return "Выполнен";
@@ -573,8 +637,18 @@ export function useProductionViewModel(): ProductionViewModel {
     setBusyMachines((machines) =>
       machines.includes(order.machine) ? machines : [...machines, order.machine],
     );
+    setProductionLog((log) => [
+      {
+        id: makeId(),
+        kind: "start",
+        at: new Date().toISOString(),
+        note: "Запуск линии",
+        operator: order.operator || undefined,
+      },
+      ...log,
+    ]);
     setPhase("running");
-  }, [phase, canExecute, params.orderRolls, order.machine]);
+  }, [phase, canExecute, params.orderRolls, order.machine, order.operator]);
 
   const pauseProduction = useCallback(() => {
     setPhase((current) => (current === "running" ? "paused" : current));
@@ -584,21 +658,55 @@ export function useProductionViewModel(): ProductionViewModel {
   }, []);
 
   const pushLog = useCallback(
-    (kind: ProductionLogKind, note?: string, count?: number) => {
+    (kind: ProductionLogKind, note?: string, count?: number, extra?: Partial<ProductionLogEntry>) => {
       setPhase((current) => {
         if (current === "running" || current === "paused") {
           setProductionLog((log) => [
-            { id: makeId(), kind, at: new Date().toISOString(), note, count },
+            {
+              id: makeId(),
+              kind,
+              at: new Date().toISOString(),
+              note,
+              count,
+              operator: order.operator || undefined,
+              ...extra,
+            },
             ...log,
           ]);
         }
         return current;
       });
     },
-    [],
+    [order.operator],
   );
-  const addDefect = useCallback((count = 1, note?: string) => pushLog("defect", note, count), [pushLog]);
-  const addScrap = useCallback((note?: string) => pushLog("scrap", note), [pushLog]);
+  const addDefect = useCallback(
+    (detail: DefectInput) => {
+      const count = Math.max(1, Math.round(detail.count || 1));
+      const widthMm = detail.widthMm ?? selectedJumbo?.widthMm ?? 0;
+      const windingM = Math.max(0, detail.windingM ?? 0);
+      // Each defective roll consumed `windingM` of the current Jumbo.
+      const meters = round1(count * windingM);
+      const areaM2 = round1(count * (widthMm / 1000) * windingM);
+      pushLog("defect", detail.comment, count, {
+        reason: detail.reason,
+        widthMm: widthMm || undefined,
+        windingM: windingM || undefined,
+        meters: meters || undefined,
+        areaM2: areaM2 || undefined,
+      });
+    },
+    [pushLog, selectedJumbo],
+  );
+  const addScrap = useCallback(
+    (detail: ScrapInput) => {
+      const meters = Math.max(0, round1(detail.meters || 0));
+      pushLog("scrap", detail.comment, undefined, {
+        reason: detail.reason,
+        meters: meters || undefined,
+      });
+    },
+    [pushLog],
+  );
   const addStop = useCallback((note?: string) => pushLog("stop", note), [pushLog]);
   const addNote = useCallback((note: string) => pushLog("comment", note), [pushLog]);
 
@@ -720,6 +828,11 @@ export function useProductionViewModel(): ProductionViewModel {
     addStop,
     addNote,
     defectCount,
+    defectAreaM2,
+    defectMetersM,
+    scrapCount,
+    scrapMetersM,
+    liveRemainderM,
     completionSummary,
     machineStatusLabel,
     machineBusy,

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   PackageSearch,
   Pause,
@@ -63,6 +64,11 @@ const destinationOptions: ReadonlyArray<SegmentOption<RollDestination>> = [
   { value: RollDestination.warehouse, label: "На склад" },
 ];
 
+/** Shown when the current Jumbo covers only part of the order — the order is not
+ *  replaced but continued on the next Jumbo after this one is fully used. */
+const PARTIAL_JUMBO_MESSAGE =
+  "Текущего Джамбо хватит только на часть заказа. Будет автоматически создан следующий этап производства после полного использования текущего Джамбо. Продолжайте производство.";
+
 function timeOf(iso: string): string {
   return new Date(iso).toTimeString().slice(0, 5);
 }
@@ -72,8 +78,10 @@ const LOG_LABEL: Record<ProductionLogEntry["kind"], string> = {
   scrap: "Тех. отход",
   stop: "Остановка",
   comment: "Комментарий",
-  start: "Начало производства",
-  replace: "Замена Джамбо",
+  start: "Начато производство",
+  exhausted: "Джамбо полностью использован",
+  connect: "Подключён Джамбо",
+  continue: "Продолжено производство",
 };
 
 function journalCount(entry: ProductionLogEntry): string {
@@ -166,6 +174,35 @@ function LabeledInput({
         onChange={(e) => onChange(e.target.value)}
         className="rounded-2xl"
       />
+    </div>
+  );
+}
+
+/** Compact chain of Jumbos used by the order: ✓ done · ▶ active. */
+function ChainStrip({ vm }: { vm: ProductionVM }) {
+  const items: Array<{ stock: string; state: "done" | "active" }> = [
+    ...vm.chainSteps.map((s) => ({ stock: s.jumboStockNumber, state: "done" as const })),
+    ...(vm.selectedJumbo ? [{ stock: vm.selectedJumbo.stockNumber, state: "active" as const }] : []),
+  ];
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-card-border pt-2.5">
+      <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Используемые Джамбо:</span>
+      {items.map((it) => (
+        <span
+          key={it.stock}
+          className={cn(
+            AppTypography.caption,
+            "inline-flex items-center gap-1 font-medium",
+            it.state === "done" ? "text-[hsl(142_71%_40%)] dark:text-[hsl(142_71%_58%)]" : "text-primary",
+          )}
+        >
+          {it.state === "done" ? <Check className="h-3.5 w-3.5" /> : <Play className="h-3 w-3 fill-current" />}
+          {it.stock}
+        </span>
+      ))}
     </div>
   );
 }
@@ -288,8 +325,8 @@ function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean })
           </div>
           <LabeledInput label="Комментарий" value={comment} onChange={setComment} />
           <p className={cn(AppTypography.caption, "text-muted-foreground")}>
-            Запись привязывается к текущему Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"}: обновит статистику брака и
-            уменьшит остаток Джамбо.
+            Запись привязывается к текущему Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"}: обновит его статистику брака
+            и уменьшит его остаток.
           </p>
           <PrimaryButton fullWidth icon={CheckCircle2} onClick={submit}>
             Подтвердить
@@ -343,7 +380,7 @@ function ScrapDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) 
           <LabeledInput label="Причина" value={reason} onChange={setReason} placeholder="Напр. заправка линии" />
           <LabeledInput label="Комментарий" value={comment} onChange={setComment} />
           <p className={cn(AppTypography.caption, "text-muted-foreground")}>
-            Уменьшит остаток текущего Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"} и обновит статистику.
+            Уменьшит остаток текущего Джамбо № {vm.selectedJumbo?.stockNumber ?? "—"} и обновит его статистику.
           </p>
           <PrimaryButton fullWidth icon={CheckCircle2} onClick={submit}>
             Подтвердить
@@ -354,39 +391,43 @@ function ScrapDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) 
   );
 }
 
-/** «Заменить Джамбо» — books the current Jumbo and continues on the chosen one. */
-function ReplaceJumboDialog({
-  vm,
-  materialNameFor,
-  disabled,
-}: {
-  vm: ProductionVM;
-  materialNameFor: (jumbo: Jumbo) => string;
-  disabled: boolean;
-}) {
+/** «Подключить следующий Джамбо» — books the current Jumbo and continues the
+ *  same order on the next one (no order is created, no defects carry over). */
+function NextJumboDialog({ vm, materialNameFor }: { vm: ProductionVM; materialNameFor: (jumbo: Jumbo) => string }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const none = vm.eligibleForContinue.length === 0;
   const pick = async (jumbo: Jumbo) => {
     await vm.continueOnNewJumbo(jumbo);
-    toast({ title: "Джамбо заменён, заказ продолжается" });
+    toast({ title: "Подключён следующий Джамбо" });
     setOpen(false);
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled={disabled || vm.continuing}>
-          Заменить Джамбо
-        </SecondaryButton>
+        <PrimaryButton icon={Repeat2} className="mt-1 h-11 text-base" fullWidth disabled={none || vm.continuing}>
+          Подключить следующий Джамбо
+        </PrimaryButton>
       </DialogTrigger>
       <DialogContent className="max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Замена Джамбо</DialogTitle>
+          <DialogTitle>Выберите следующий Джамбо</DialogTitle>
         </DialogHeader>
         <p className={cn(AppTypography.footnote, "text-muted-foreground")}>
-          Текущий Джамбо будет закрыт с фиксацией остатка, а заказ продолжится на выбранном.
+          Текущий Джамбо полностью использован. Выберите следующий Джамбо для продолжения выполнения заказа — заказ
+          остаётся тем же.
         </p>
-        {vm.eligibleForContinue.length === 0 ? (
-          <EmptyState icon={icons.warehouse} title="Нет доступных Джамбо" message="Все подходящие Джамбо уже задействованы." />
+        {none ? (
+          <EmptyState
+            icon={icons.warehouse}
+            title="Нет доступных Джамбо"
+            message="Все подходящие Джамбо уже задействованы. Оформите поступление сырья."
+            action={
+              <Link href="/warehouse/receipt">
+                <PrimaryButton icon={icons.boxes}>Поступление сырья</PrimaryButton>
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {vm.eligibleForContinue.map((jumbo) => (
@@ -443,13 +484,13 @@ function CompletionSummaryCard({ vm }: { vm: ProductionVM }) {
           <Tile label="Циклов" value={`${s.cycles}`} />
         </div>
         <div>
-          <div className={cn(AppTypography.caption2, "mb-1 text-muted-foreground")}>Использованные Джамбо ({s.jumbosUsed})</div>
+          <div className={cn(AppTypography.caption2, "mb-1 text-muted-foreground")}>Использованные Джамбо ({s.jumbosUsed}) — каждый списывается отдельно</div>
           <ol className="space-y-1">
             {s.steps.map((step, index) => (
               <li key={`${step.jumboStockNumber}-${index}`} className={cn(AppTypography.caption, "flex items-center gap-2 rounded-lg border bg-card/50 px-2 py-1")}>
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/12 text-[10px] font-semibold text-primary">{index + 1}</span>
                 <span className="min-w-0 flex-1 truncate">
-                  № {step.jumboStockNumber} · изготовлено {step.producedMainRolls} · остаток {formatMeters(step.remainderAfterM)}
+                  № {step.jumboStockNumber} · использовано {formatMeters(step.consumedM)} · изготовлено {step.producedMainRolls} · остаток {formatMeters(step.remainderAfterM)}
                 </span>
               </li>
             ))}
@@ -468,6 +509,7 @@ export function ProductionView() {
   const { toast } = useToast();
   const locked = vm.locked;
   const plan = vm.plan;
+  const insufficient = vm.planStatus === "insufficient";
 
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
 
@@ -489,7 +531,7 @@ export function ProductionView() {
     { ok: vm.order.customer.trim().length > 0, label: "Заказчик" },
     { ok: vm.order.operator.trim().length > 0, label: "Оператор" },
     { ok: Boolean(vm.order.machine), label: "Станок" },
-    { ok: vm.planStatus === "ok", label: "Расчёт схемы" },
+    { ok: Boolean(plan && plan.total_main_rolls > 0), label: "Расчёт схемы" },
   ];
   const missingRequirements = startRequirements.filter((r) => !r.ok).map((r) => r.label);
 
@@ -566,12 +608,9 @@ export function ProductionView() {
                 </div>
               </Field>
             </div>
-            {locked ? (
-              <div className={cn(AppTypography.caption, "mt-2 text-amber-600 dark:text-amber-400")}>{vm.busyMachineMessage}</div>
-            ) : null}
           </CardView>
 
-          {/* ── Jumbo + nesting parameters (compact info card) ───────── */}
+          {/* ── Jumbo + nesting parameters + chain (compact info card) ── */}
           <CardView className="p-3">
             {vm.selectedJumbo ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -633,14 +672,17 @@ export function ProductionView() {
                   </div>
                 </div>
               )}
-              {vm.planStatus === "insufficient" ? (
+
+              {insufficient ? (
                 <div className={cn(AppTypography.caption, "mt-2 flex items-start gap-1.5 text-amber-600 dark:text-amber-400")}>
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{vm.planError}</span>
+                  <span>{PARTIAL_JUMBO_MESSAGE}</span>
                 </div>
               ) : vm.planStatus === "error" ? (
                 <div className={cn(AppTypography.caption, "mt-2 text-destructive")}>{vm.planError}</div>
               ) : null}
+
+              {vm.selectedJumbo && (locked || vm.chainSteps.length > 0) ? <ChainStrip vm={vm} /> : null}
             </div>
           </CardView>
 
@@ -684,7 +726,13 @@ export function ProductionView() {
                               <span
                                 className={cn(
                                   "font-medium",
-                                  entry.kind === "defect" ? "text-destructive" : entry.kind === "start" ? "text-primary" : "",
+                                  entry.kind === "defect"
+                                    ? "text-destructive"
+                                    : entry.kind === "start" || entry.kind === "connect" || entry.kind === "continue"
+                                      ? "text-primary"
+                                      : entry.kind === "exhausted"
+                                        ? "text-[hsl(142_71%_40%)] dark:text-[hsl(142_71%_58%)]"
+                                        : "",
                                 )}
                               >
                                 {LOG_LABEL[entry.kind]}
@@ -710,7 +758,6 @@ export function ProductionView() {
                     <>
                       <DefectDialog vm={vm} disabled={!locked} />
                       <ScrapDialog vm={vm} disabled={!locked} />
-                      <ReplaceJumboDialog vm={vm} materialNameFor={materialNameFor} disabled={vm.eligibleForContinue.length === 0} />
                       {vm.phase === "running" ? (
                         <SecondaryButton icon={Pause} className="h-9 justify-start" onClick={vm.pauseProduction}>
                           Приостановить заказ
@@ -720,9 +767,20 @@ export function ProductionView() {
                           Продолжить заказ
                         </SecondaryButton>
                       )}
-                      <PrimaryButton icon={CheckCircle2} className="mt-1 h-11 text-base" fullWidth loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
-                        Завершить производство
-                      </PrimaryButton>
+                      {insufficient ? (
+                        <>
+                          <NextJumboDialog vm={vm} materialNameFor={materialNameFor} />
+                          {vm.eligibleForContinue.length === 0 ? (
+                            <p className={cn(AppTypography.caption, "text-muted-foreground")}>
+                              Нет доступных Джамбо для продолжения — оформите поступление сырья.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <PrimaryButton icon={CheckCircle2} className="mt-1 h-11 text-base" fullWidth loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
+                          Завершить производство
+                        </PrimaryButton>
+                      )}
                     </>
                   ) : (
                     <>
@@ -742,19 +800,19 @@ export function ProductionView() {
               <div className="grid grid-cols-2 gap-3">
                 <CardView className="p-3">
                   <div className="flex items-center justify-between">
-                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Брак</span>
+                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Брак (тек. Джамбо)</span>
                     <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
                   </div>
-                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums text-destructive")}>{vm.defectCount}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>рул. · {formatArea(vm.defectAreaM2)}</div>
+                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums text-destructive")}>{vm.activeDefectCount}</div>
+                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>рул. · {formatArea(vm.activeDefectAreaM2)}</div>
                 </CardView>
                 <CardView className="p-3">
                   <div className="flex items-center justify-between">
-                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Тех. отход</span>
+                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Тех. отход (тек.)</span>
                     <Recycle className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
-                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>{vm.scrapCount}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>записей · {formatMeters(vm.scrapMetersM)}</div>
+                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>{vm.activeScrapCount}</div>
+                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>записей · {formatMeters(vm.activeScrapMetersM)}</div>
                 </CardView>
               </div>
             </div>
@@ -764,8 +822,8 @@ export function ProductionView() {
           <div className="z-10 rounded-xl border border-card-border bg-background/90 px-3 py-1.5 backdrop-blur lg:sticky lg:bottom-0">
             <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-5 gap-y-1")}>
               <span>Прогресс: <span className="font-semibold text-foreground">{progress}%</span></span>
-              <span>Брак: <span className="font-semibold text-destructive">{vm.defectCount}</span> рул. · {formatArea(vm.defectAreaM2)}</span>
-              <span>Тех. отход: <span className="font-semibold text-foreground">{formatMeters(vm.scrapMetersM)}</span></span>
+              <span>Брак: <span className="font-semibold text-destructive">{vm.activeDefectCount}</span> рул. · {formatArea(vm.activeDefectAreaM2)}</span>
+              <span>Тех. отход: <span className="font-semibold text-foreground">{formatMeters(vm.activeScrapMetersM)}</span></span>
               <span>Полезная площадь: <span className="font-semibold text-foreground">{plan ? formatArea(plan.useful_area_m2) : "—"}</span></span>
               <span className="ml-auto">Остаток Джамбо: <span className="font-semibold text-foreground">{vm.selectedJumbo ? formatMeters(vm.liveRemainderM) : "—"}</span></span>
             </div>

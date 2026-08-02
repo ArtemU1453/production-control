@@ -34,7 +34,15 @@ export type ProductionPlanStatus = "idle" | "ok" | "insufficient" | "error";
 export type OrderPhase = "setup" | "running" | "paused" | "completed";
 
 /** A production-journal entry recorded while an order is in work. */
-export type ProductionLogKind = "defect" | "scrap" | "stop" | "comment" | "start" | "replace";
+export type ProductionLogKind =
+  | "defect"
+  | "scrap"
+  | "stop"
+  | "comment"
+  | "start"
+  | "exhausted"
+  | "connect"
+  | "continue";
 export interface ProductionLogEntry {
   id: string;
   kind: ProductionLogKind;
@@ -53,6 +61,9 @@ export interface ProductionLogEntry {
   areaM2?: number;
   /** Оператор, зафиксировавший операцию. */
   operator?: string;
+  /** Складской номер Джамбо, к которому привязана запись (брак/отход/списание
+   *  относятся именно к активному Джамбо, а не к заказу). */
+  jumboStockNumber?: string;
 }
 
 /** Detailed defect record entered by the operator during production. */
@@ -238,16 +249,19 @@ interface ProductionViewModel {
   addScrap: (detail: ScrapInput) => void;
   addStop: (note?: string) => void;
   addNote: (note: string) => void;
+  /** Брак за весь заказ, рул. (для итогового отчёта). */
   defectCount: number;
-  /** Суммарная площадь брака за смену, м². */
+  /** Суммарная площадь брака за весь заказ, м². */
   defectAreaM2: number;
-  /** Списанный на брак метраж за смену, м. */
-  defectMetersM: number;
-  /** Количество записей тех. отхода. */
-  scrapCount: number;
-  /** Суммарный тех. отход за смену, м. */
-  scrapMetersM: number;
-  /** Живой остаток текущего Джамбо за вычетом брака и тех. отхода, м (только
+  /** Брак текущего (активного) Джамбо, рул. */
+  activeDefectCount: number;
+  /** Площадь брака текущего Джамбо, м². */
+  activeDefectAreaM2: number;
+  /** Записей тех. отхода по текущему Джамбо. */
+  activeScrapCount: number;
+  /** Тех. отход текущего Джамбо, м. */
+  activeScrapMetersM: number;
+  /** Живой остаток текущего Джамбо за вычетом его брака и тех. отхода, м (только
    *  отображение — не мутирует запись Джамбо и не влияет на расчёт/списание). */
   liveRemainderM: number;
   /** Final summary shown in the "completed" phase. */
@@ -488,13 +502,32 @@ export function useProductionViewModel(): ProductionViewModel {
         setSelectedJumbo(next);
         setOutcome(null);
         setOrderSummary(null);
+        // Journal: current Jumbo fully used → next connected → production resumes.
+        const switchAt = new Date().toISOString();
         setProductionLog((log) => [
           {
             id: makeId(),
-            kind: "replace",
-            at: new Date().toISOString(),
+            kind: "continue",
+            at: switchAt,
+            note: "Продолжено производство",
+            operator: order.operator || undefined,
+            jumboStockNumber: next.stockNumber,
+          },
+          {
+            id: makeId(),
+            kind: "connect",
+            at: switchAt,
             note: `Джамбо № ${next.stockNumber}`,
             operator: order.operator || undefined,
+            jumboStockNumber: next.stockNumber,
+          },
+          {
+            id: makeId(),
+            kind: "exhausted",
+            at: switchAt,
+            note: `Джамбо № ${selectedJumbo.stockNumber}`,
+            operator: order.operator || undefined,
+            jumboStockNumber: selectedJumbo.stockNumber,
           },
           ...log,
         ]);
@@ -599,16 +632,32 @@ export function useProductionViewModel(): ProductionViewModel {
 
   // ── Production lifecycle ──────────────────────────────────────────────────
   const locked = phase === "running" || phase === "paused";
-  const canStart = phase === "setup" && canExecute;
+  // The current Jumbo can produce at least part of the order (full order when
+  // "ok", the first stage of a Jumbo chain when "insufficient").
+  const canProduceCurrent =
+    plan !== null && plan.total_main_rolls > 0 && (planStatus === "ok" || planStatus === "insufficient");
+  // Production may start even if the current Jumbo covers only part of the order;
+  // the remainder continues on the next Jumbo in the chain. Finishing the order
+  // still requires a fully-covering plan (canExecute).
+  const canStart = phase === "setup" && orderValid && jumboValid && canProduceCurrent;
+  const activeStock = selectedJumbo?.stockNumber;
+  const isActiveEntry = (entry: ProductionLogEntry): boolean =>
+    activeStock !== undefined && entry.jumboStockNumber === activeStock;
   const defectEntries = productionLog.filter((entry) => entry.kind === "defect");
   const scrapEntries = productionLog.filter((entry) => entry.kind === "scrap");
+  // Order-wide totals (final report).
   const defectCount = defectEntries.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
   const defectAreaM2 = round1(defectEntries.reduce((sum, entry) => sum + (entry.areaM2 ?? 0), 0));
-  const defectMetersM = round1(defectEntries.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
-  const scrapCount = scrapEntries.length;
-  const scrapMetersM = round1(scrapEntries.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
+  // Active-Jumbo scope (live operator view — defects never carry between Jumbos).
+  const activeDefects = defectEntries.filter(isActiveEntry);
+  const activeScraps = scrapEntries.filter(isActiveEntry);
+  const activeDefectCount = activeDefects.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+  const activeDefectAreaM2 = round1(activeDefects.reduce((sum, entry) => sum + (entry.areaM2 ?? 0), 0));
+  const activeDefectMetersM = round1(activeDefects.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
+  const activeScrapCount = activeScraps.length;
+  const activeScrapMetersM = round1(activeScraps.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
   const liveRemainderM = selectedJumbo
-    ? Math.max(0, round1(selectedJumbo.currentRemainderM - defectMetersM - scrapMetersM))
+    ? Math.max(0, round1(selectedJumbo.currentRemainderM - activeDefectMetersM - activeScrapMetersM))
     : 0;
 
   const orderStatusLabel = (() => {
@@ -629,7 +678,7 @@ export function useProductionViewModel(): ProductionViewModel {
   );
 
   const startProduction = useCallback(() => {
-    if (phase !== "setup" || !canExecute) {
+    if (!canStart) {
       return;
     }
     setStartedAt(new Date().toISOString());
@@ -642,13 +691,14 @@ export function useProductionViewModel(): ProductionViewModel {
         id: makeId(),
         kind: "start",
         at: new Date().toISOString(),
-        note: "Запуск линии",
+        note: selectedJumbo ? `Джамбо № ${selectedJumbo.stockNumber}` : "Запуск линии",
         operator: order.operator || undefined,
+        jumboStockNumber: selectedJumbo?.stockNumber,
       },
       ...log,
     ]);
     setPhase("running");
-  }, [phase, canExecute, params.orderRolls, order.machine, order.operator]);
+  }, [canStart, params.orderRolls, order.machine, order.operator, selectedJumbo]);
 
   const pauseProduction = useCallback(() => {
     setPhase((current) => (current === "running" ? "paused" : current));
@@ -669,6 +719,7 @@ export function useProductionViewModel(): ProductionViewModel {
               note,
               count,
               operator: order.operator || undefined,
+              jumboStockNumber: selectedJumbo?.stockNumber,
               ...extra,
             },
             ...log,
@@ -677,7 +728,7 @@ export function useProductionViewModel(): ProductionViewModel {
         return current;
       });
     },
-    [order.operator],
+    [order.operator, selectedJumbo],
   );
   const addDefect = useCallback(
     (detail: DefectInput) => {
@@ -829,9 +880,10 @@ export function useProductionViewModel(): ProductionViewModel {
     addNote,
     defectCount,
     defectAreaM2,
-    defectMetersM,
-    scrapCount,
-    scrapMetersM,
+    activeDefectCount,
+    activeDefectAreaM2,
+    activeScrapCount,
+    activeScrapMetersM,
     liveRemainderM,
     completionSummary,
     machineStatusLabel,

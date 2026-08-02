@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
 import { MaterialStatus, type Jumbo, type Material } from "@/models";
-import { firstError, validatePositive, validateRequired } from "@/services";
+import { firstError, validatePositive } from "@/services";
 import { AuditAction } from "@/admin";
 
 export interface ReceiptItemDraft {
+  /** Auto-assigned at submit — the operator no longer enters a Jumbo code
+   *  (every Jumbo of the batch inherits the material of the batch). */
   stockNumber: string;
   widthMm: number;
   initialWindingM: number;
   comment: string;
 }
 
-function emptyItem(defaultWidth: number): ReceiptItemDraft {
-  return { stockNumber: "", widthMm: defaultWidth, initialWindingM: 0, comment: "" };
+/** A single Jumbo added to the batch from the compact add-form. */
+export interface JumboDraftInput {
+  widthMm: number;
+  initialWindingM: number;
+  comment: string;
 }
 
 function todayIsoDate(): string {
@@ -24,6 +29,8 @@ interface ReceiptViewModel {
   materials: Material[];
   materialId: string;
   setMaterialId: (id: string) => void;
+  /** Standard width of the selected material — prefilled default for new rows. */
+  defaultWidthMm: number;
   arrivalDate: string;
   dateLocked: boolean;
   changeArrivalDate: (date: string) => void;
@@ -33,7 +40,8 @@ interface ReceiptViewModel {
     key: K,
     value: ReceiptItemDraft[K],
   ) => void;
-  addItem: () => void;
+  /** Append a filled Jumbo card to the batch (compact add-form). */
+  addJumbo: (draft: JumboDraftInput) => void;
   removeItem: (index: number) => void;
   error: string | null;
   saving: boolean;
@@ -56,7 +64,7 @@ export function useReceiptViewModel(): ReceiptViewModel {
   const [materialId, setMaterialId] = useState("");
   const [arrivalDate, setArrivalDate] = useState(todayIsoDate);
   const [dateLocked, setDateLocked] = useState(false);
-  const [items, setItems] = useState<ReceiptItemDraft[]>([emptyItem(0)]);
+  const [items, setItems] = useState<ReceiptItemDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -75,7 +83,6 @@ export function useReceiptViewModel(): ReceiptViewModel {
       setExistingNumbers(new Set(jumboList.map((j) => j.stockNumber)));
       if (usable.length > 0) {
         setMaterialId(usable[0].id);
-        setItems([emptyItem(usable[0].standardWidthMm)]);
       }
       setLoading(false);
     })();
@@ -111,9 +118,18 @@ export function useReceiptViewModel(): ReceiptViewModel {
     [],
   );
 
-  const addItem = useCallback(() => {
-    setItems((previous) => [...previous, emptyItem(selectedMaterial?.standardWidthMm ?? 0)]);
-  }, [selectedMaterial]);
+  const addJumbo = useCallback((draft: JumboDraftInput) => {
+    setItems((previous) => [
+      ...previous,
+      {
+        stockNumber: "",
+        widthMm: draft.widthMm,
+        initialWindingM: draft.initialWindingM,
+        comment: draft.comment,
+      },
+    ]);
+    setError(null);
+  }, []);
 
   const removeItem = useCallback((index: number) => {
     setItems((previous) =>
@@ -127,12 +143,14 @@ export function useReceiptViewModel(): ReceiptViewModel {
       return null;
     }
 
-    const seen = new Set<string>();
+    if (items.length === 0) {
+      setError("Добавьте хотя бы один Джамбо");
+      return null;
+    }
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
-      const rowLabel = `Строка ${index + 1}`;
+      const rowLabel = `Джамбо ${index + 1}`;
       const fieldError = firstError(
-        validateRequired(item.stockNumber, `${rowLabel}: номер склада`),
         validatePositive(item.widthMm, `${rowLabel}: ширина`),
         validatePositive(item.initialWindingM, `${rowLabel}: намотка`),
       );
@@ -140,13 +158,22 @@ export function useReceiptViewModel(): ReceiptViewModel {
         setError(fieldError);
         return null;
       }
-      const number = item.stockNumber.trim();
-      if (existingNumbers.has(number) || seen.has(number)) {
-        setError(`Номер склада «${number}» уже существует`);
-        return null;
-      }
-      seen.add(number);
     }
+
+    // Stock numbers are auto-assigned (the code field was removed): sequential,
+    // zero-padded, skipping any number already used by an existing Jumbo.
+    const taken = new Set(existingNumbers);
+    let counter = 1;
+    const nextStockNumber = (): string => {
+      let candidate = String(counter).padStart(4, "0");
+      while (taken.has(candidate)) {
+        counter += 1;
+        candidate = String(counter).padStart(4, "0");
+      }
+      taken.add(candidate);
+      counter += 1;
+      return candidate;
+    };
 
     setSaving(true);
     try {
@@ -157,7 +184,7 @@ export function useReceiptViewModel(): ReceiptViewModel {
         arrivalDate: new Date(arrivalDate).toISOString(),
         operator: current.operator || undefined,
         items: items.map((item) => ({
-          stockNumber: item.stockNumber.trim(),
+          stockNumber: item.stockNumber.trim() || nextStockNumber(),
           widthMm: item.widthMm,
           initialWindingM: item.initialWindingM,
           comment: item.comment.trim() || undefined,
@@ -180,12 +207,13 @@ export function useReceiptViewModel(): ReceiptViewModel {
     materials,
     materialId,
     setMaterialId,
+    defaultWidthMm: selectedMaterial?.standardWidthMm ?? 0,
     arrivalDate,
     dateLocked,
     changeArrivalDate,
     items,
     setItemField,
-    addItem,
+    addJumbo,
     removeItem,
     error,
     saving,

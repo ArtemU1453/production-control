@@ -35,7 +35,7 @@ export {
   useMaterialEditorViewModel,
   type MaterialDraft,
 } from "./useMaterialEditorViewModel";
-export { useReceiptViewModel, type ReceiptItemDraft } from "./useReceiptViewModel";
+export { useReceiptViewModel, type ReceiptItemDraft, type JumboDraftInput } from "./useReceiptViewModel";
 export { useJumboDetailViewModel, type JumboEdit } from "./useJumboDetailViewModel";
 export {
   useArchiveViewModel,

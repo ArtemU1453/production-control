@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
 import {
   CardView,
   EmptyState,
@@ -10,6 +12,7 @@ import {
   SecondaryButton,
   StatusBadge,
 } from "@/components";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,7 +95,16 @@ export function JumboDetailView({ jumboId }: { jumboId: string }) {
   return (
     <ScreenScaffold
       title={`№ ${jumbo.stockNumber}`}
-      toolbar={<StatusBadge label={jumboStatusTitle(jumbo.status)} tone={role} />}
+      toolbar={
+        <>
+          <Link href="/warehouse">
+            <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Назад к складу">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <StatusBadge label={jumboStatusTitle(jumbo.status)} tone={role} />
+        </>
+      }
     >
       <div className="space-y-4">
         <CardView title="Сведения" icon={icons.jumbo} animate>

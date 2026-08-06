@@ -1,3 +1,4 @@
+import type { Coating } from "./Coating";
 import type { Machine } from "./Machine";
 import type { StatusColorRole } from "./JumboStatus";
 
@@ -82,6 +83,10 @@ export interface FinishedRoll {
   producedAt: string;
   machine: Machine;
   operator: string;
+  /** Красящий слой (IN/OUT). Optional for rolls made before the field existed. */
+  coating?: Coating;
+  /** Why the roll appeared on the finished-goods warehouse (e.g. излишек). */
+  sourceReason?: string;
   /** Stock number of the Jumbo this roll was cut from. */
   jumboStockNumber: string;
   status: FinishedRollStatus;

@@ -36,6 +36,7 @@ export {
   materialStatusOrder,
 } from "./MaterialStatus";
 export { Machine, machineTitle, machineOrder } from "./Machine";
+export { Coating, coatingTitle, coatingOrder, DEFAULT_COATING } from "./Coating";
 export { CuttingRollKind, RollDestination } from "./CuttingRoll";
 export { WasteKind, wasteKindTitle } from "./Waste";
 export { JumboOperationType, jumboOperationTitle } from "./JumboOperation";

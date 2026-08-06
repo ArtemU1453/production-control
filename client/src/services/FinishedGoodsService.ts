@@ -1,6 +1,7 @@
 import {
   FinishedRollStatus,
   RollDestination,
+  type Coating,
   type FinishedRoll,
   type FinishedRollHistoryEntry,
   type Machine,
@@ -26,6 +27,8 @@ export interface FinishedGoodsCompletionInput {
   lengthM: number;
   machine: Machine;
   operator: string;
+  /** Красящий слой (IN/OUT) of the order. */
+  coating?: Coating;
   /** Manufacturing / completion timestamp (ISO). */
   producedAt: string;
   /** Rolls needed to close the order (good product target). */
@@ -162,6 +165,11 @@ export function createFinishedGoodsService(
         const goesToOrder = !allToStock && index < input.targetRolls;
         const status = goesToOrder ? FinishedRollStatus.inOrder : FinishedRollStatus.inStock;
         const arrivalTitle = goesToOrder ? "Передан по заказу" : "Поступил на склад";
+        const sourceReason = goesToOrder
+          ? "По заказу"
+          : allToStock
+            ? "Производство на склад"
+            : "Излишек производства";
         const roll: FinishedRoll = {
           id: makeId(),
           number: rollNumber(input.producedAt, base + index + 1),
@@ -174,6 +182,8 @@ export function createFinishedGoodsService(
           producedAt: input.producedAt,
           machine: input.machine,
           operator: input.operator,
+          coating: input.coating,
+          sourceReason,
           jumboStockNumber,
           status,
           sessionId: input.sessionId,

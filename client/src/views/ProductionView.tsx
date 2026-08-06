@@ -44,8 +44,11 @@ import { icons } from "@/resources/icons";
 import { strings } from "@/resources/strings";
 import { AppTypography } from "@/designsystem";
 import {
+  Coating,
   Machine,
   RollDestination,
+  coatingOrder,
+  coatingTitle,
   jumboStatusColorRole,
   jumboStatusTitle,
   machineOrder,
@@ -515,7 +518,7 @@ export function ProductionView() {
         <div className="space-y-3 pb-2">
           {/* ── Order header (one compact row) ───────────────────────── */}
           <CardView className="p-3">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-8">
               <Field label="Материал">
                 {locked ? (
                   <StaticValue>{vm.selectedMaterial ? vm.selectedMaterial.code : "—"}</StaticValue>
@@ -564,6 +567,24 @@ export function ProductionView() {
                   <StaticValue>{vm.order.operator || "—"}</StaticValue>
                 ) : (
                   <Input id="order-operator" value={vm.order.operator} onChange={(e) => vm.updateOrder("operator", e.target.value)} className="rounded-2xl" />
+                )}
+              </Field>
+              <Field label="Красящий слой">
+                {locked ? (
+                  <StaticValue>{coatingTitle(vm.order.coating ?? Coating.out)}</StaticValue>
+                ) : (
+                  <Select value={vm.order.coating ?? Coating.out} onValueChange={(v) => vm.updateOrder("coating", v as Coating)}>
+                    <SelectTrigger className="rounded-2xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {coatingOrder.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {coatingTitle(c)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </Field>
               <Field label="Дата">

@@ -1,6 +1,7 @@
 import type { CalcResult } from "../core/calculator/calculatorLogic";
 import type { CuttingOrderInput } from "./CuttingOrder";
 import type { CuttingRoll } from "./CuttingRoll";
+import type { Coating } from "./Coating";
 import { Machine } from "./Machine";
 
 /** Lifecycle status of a production session. */
@@ -22,6 +23,9 @@ export interface OrderInfo {
   orderNumber: string;
   operator: string;
   machine: Machine;
+  /** Красящий слой (IN/OUT). Optional for backward compatibility with sessions
+   *  saved before the field existed. */
+  coating?: Coating;
   comment?: string;
 }
 

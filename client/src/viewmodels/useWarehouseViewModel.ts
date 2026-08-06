@@ -17,6 +17,10 @@ interface WarehouseViewModel {
   setSortKey: (value: WarehouseSortKey) => void;
   counts: Record<WarehouseFilter, number>;
   startUsage: (jumboId: string) => Promise<void>;
+  /** Remove a Jumbo record from the warehouse (used by the card trash action,
+   *  behind a confirmation). Only removes the record and reloads — the warehouse
+   *  calculation/booking logic is untouched. */
+  deleteJumbo: (jumboId: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -100,6 +104,14 @@ export function useWarehouseViewModel(): WarehouseViewModel {
     [warehouse, settings, reload],
   );
 
+  const deleteJumbo = useCallback(
+    async (jumboId: string) => {
+      await jumboRepository.delete(jumboId);
+      await reload();
+    },
+    [jumboRepository, reload],
+  );
+
   const counts = useMemo<Record<WarehouseFilter, number>>(() => {
     const base: Record<WarehouseFilter, number> = {
       all: all.length,
@@ -133,6 +145,7 @@ export function useWarehouseViewModel(): WarehouseViewModel {
     setSortKey,
     counts,
     startUsage,
+    deleteJumbo,
     reload,
   };
 }

@@ -127,6 +127,10 @@ export interface CompletionSummary {
   producedMainRolls: number;
   goodRolls: number;
   targetRolls: number;
+  /** Годных рулонов, переданных по заказу (= min(годных, заказ)). */
+  orderDeliveredRolls: number;
+  /** Излишек годных рулонов, оприходованный на склад (= max(0, годных − заказ)). */
+  warehouseSurplusRolls: number;
   defects: number;
   usedMaterialM: number;
   remainderM: number;
@@ -547,7 +551,12 @@ export function useProductionViewModel(): ProductionViewModel {
         setChainJumboIds((ids) => [...ids, selectedJumbo.id]);
 
         // Carry the outstanding quantity to the next Jumbo — no re-entry needed.
-        const remaining = Math.max(1, total - produced);
+        // Includes defect replacements: the order needs `total` GOOD rolls, so the
+        // total main to produce is `total + defects`.
+        const defectsSoFar = productionLog
+          .filter((entry) => entry.kind === "defect")
+          .reduce((sum, entry) => sum + (entry.count ?? 1), 0);
+        const remaining = Math.max(1, total + defectsSoFar - produced);
         setParams((p) => ({ ...p, orderRolls: remaining }));
         setSelectedJumbo(next);
         setOutcome(null);
@@ -613,6 +622,7 @@ export function useProductionViewModel(): ProductionViewModel {
       cuttingSessions,
       recordAudit,
       loadAvailable,
+      productionLog,
     ],
   );
 
@@ -841,6 +851,11 @@ export function useProductionViewModel(): ProductionViewModel {
         meters: meters || undefined,
         areaM2: areaM2 || undefined,
       });
+      // Годная продукция = изготовлено − брак: каждый брак нужно возместить, поэтому
+      // требуемое количество производства увеличивается на число бракованных рулонов.
+      // Если текущего Джамбо не хватит на замену — расчёт станет «insufficient» и
+      // недостающее количество будет произведено на следующем Джамбо.
+      setParams((previous) => ({ ...previous, orderRolls: previous.orderRolls + count }));
     },
     [pushLog, selectedJumbo],
   );
@@ -868,13 +883,20 @@ export function useProductionViewModel(): ProductionViewModel {
         const usefulArea = round1(steps.reduce((sum, step) => sum + step.usefulAreaM2, 0));
         const wasteArea = round1(steps.reduce((sum, step) => sum + step.wasteAreaM2, 0));
         const producedRolls = priorProduced + planAtFinish.total_main_rolls;
+        // Годная продукция = изготовлено − брак. По заказу передаётся ровно
+        // заказанное количество, весь излишек годных — на склад.
+        const goodRolls = Math.max(0, producedRolls - defects);
+        const orderDeliveredRolls = Math.min(goodRolls, target);
+        const warehouseSurplusRolls = Math.max(0, goodRolls - target);
         setCompletionSummary({
           orderNumber: order.orderNumber,
           customer: order.customer,
           jumbosUsed: steps.length,
           producedMainRolls: producedRolls,
-          goodRolls: Math.max(0, producedRolls - defects),
+          goodRolls,
           targetRolls: target,
+          orderDeliveredRolls,
+          warehouseSurplusRolls,
           defects,
           usedMaterialM: round1(steps.reduce((sum, step) => sum + step.consumedM, 0)),
           remainderM: result.remainderAfterM,

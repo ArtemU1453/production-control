@@ -28,6 +28,22 @@ export interface ProductionParams {
   additionalDestination: RollDestination;
 }
 
+/**
+ * Blank roll parameters for a new production task. The user-entered fields
+ * (ширина / длина / количество) always start empty — nothing is carried over
+ * from a previous order, cached, or restored. Only the additional-rolls
+ * destination keeps its neutral default (a toggle, not a numeric value).
+ */
+function emptyParams(): ProductionParams {
+  return {
+    rollWidthMm: 0,
+    rollLengthM: 0,
+    orderRolls: 0,
+    additionalWidthMm: undefined,
+    additionalDestination: RollDestination.order,
+  };
+}
+
 /** Outcome status of the live plan for the selected Jumbo. */
 export type ProductionPlanStatus = "idle" | "ok" | "insufficient" | "error";
 
@@ -299,13 +315,7 @@ export function useProductionViewModel(): ProductionViewModel {
     machine: Machine.machine1,
     comment: "",
   });
-  const [params, setParams] = useState<ProductionParams>({
-    rollWidthMm: 104,
-    rollLengthM: 300,
-    orderRolls: 50,
-    additionalWidthMm: undefined,
-    additionalDestination: RollDestination.order,
-  });
+  const [params, setParams] = useState<ProductionParams>(emptyParams);
   const [executing, setExecuting] = useState(false);
   const [outcome, setOutcome] = useState<CompleteCalculationOutcome | null>(null);
 
@@ -866,6 +876,17 @@ export function useProductionViewModel(): ProductionViewModel {
     setStartedAt(null);
     setProductionLog([]);
     setCompletionSummary(null);
+    // Полный сброс формы: пользовательские поля очищаются, системные (оператор,
+    // станок) сохраняются, дата/время обновляются.
+    setParams(emptyParams());
+    setOrder((previous) => ({
+      ...previous,
+      date: todayIsoDate(),
+      time: currentTime(),
+      orderNumber: "",
+      customer: "",
+      comment: "",
+    }));
     reset();
   }, [reset]);
 

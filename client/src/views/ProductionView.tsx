@@ -421,11 +421,15 @@ function CompletionSummaryCard({ vm }: { vm: ProductionVM }) {
           {s.customer ? ` · ${s.customer}` : ""}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Tile label="Изготовлено (годных)" value={`${s.goodRolls} шт.`} />
+          <Tile label="Заказ" value={`${s.targetRolls} шт.`} />
+          <Tile label="Годной продукции изготовлено" value={`${s.goodRolls} шт.`} />
+          <Tile label="Передано по заказу" value={`${s.orderDeliveredRolls} шт.`} />
+          {s.warehouseSurplusRolls > 0 ? (
+            <Tile label="Передано на склад" value={`${s.warehouseSurplusRolls} шт.`} />
+          ) : null}
           <Tile label="Брак" value={`${s.defects} шт.`} tone={s.defects > 0 ? "danger" : undefined} />
           <Tile label="Использовано" value={formatMeters(s.usedMaterialM)} />
           <Tile label="Остаток" value={formatMeters(s.remainderM)} />
-          <Tile label="Полезная площадь" value={formatArea(s.usefulAreaM2)} />
           <Tile label="Производительность" value={`${s.utilizationPercent}%`} />
           <Tile label="Время" value={`${durationMin} мин`} />
           <Tile label="Циклов" value={`${s.cycles}`} />
@@ -461,8 +465,10 @@ export function ProductionView() {
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
 
   const target = vm.orderTotalRolls ?? vm.params.orderRolls;
-  // «Выполнено» / «Осталось» по заказу (прогресс-шкала убрана — только числа).
-  const doneRolls = vm.producedMain + (plan && vm.planStatus !== "error" ? plan.total_main_rolls : 0);
+  // «Выполнено» / «Осталось» по заказу считаются по ГОДНОЙ продукции
+  // (изготовлено − брак): заказ закрывается только когда годных ≥ заказа.
+  const producedRolls = vm.producedMain + (plan && vm.planStatus !== "error" ? plan.total_main_rolls : 0);
+  const doneRolls = Math.max(0, producedRolls - vm.defectCount);
   const remainingRolls = Math.max(0, target - doneRolls);
   const remainderPct =
     vm.selectedJumbo && vm.selectedJumbo.initialWindingM > 0

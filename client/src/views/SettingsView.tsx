@@ -1,6 +1,17 @@
-import { ListRow, ScreenScaffold, SectionHeader } from "@/components";
+import { RefreshCw } from "lucide-react";
+import {
+  CardView,
+  ListRow,
+  PrimaryButton,
+  ScreenScaffold,
+  SecondaryButton,
+  SectionHeader,
+} from "@/components";
+import { cn } from "@/lib/utils";
+import { AppTypography } from "@/designsystem";
 import { icons, type LucideIcon } from "@/resources/icons";
 import { strings } from "@/resources/strings";
+import { useAppUpdate } from "@/core/update/useAppUpdate";
 
 interface HubItem {
   href: string;
@@ -43,12 +54,41 @@ const groups: HubGroup[] = [
   },
 ];
 
+/** Manual "check for updates" card — runs the same version check as the
+ *  automatic startup check and offers to reload when a new version exists. */
+function UpdateCheckCard() {
+  const { current, latest, hasUpdate, checkedOnce, checking, check, applyUpdate } = useAppUpdate();
+  return (
+    <CardView title="Обновление приложения" icon={icons.about}>
+      <div className="space-y-2">
+        <div className={cn(AppTypography.caption, "text-muted-foreground")}>Текущая версия: {current}</div>
+        {checkedOnce ? (
+          hasUpdate ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={AppTypography.footnote}>Найдена новая версия{latest ? ` (${latest})` : ""}.</span>
+              <PrimaryButton onClick={() => void applyUpdate()}>Обновить</PrimaryButton>
+            </div>
+          ) : (
+            <span className={cn(AppTypography.footnote, "text-muted-foreground")}>
+              Используется последняя версия приложения.
+            </span>
+          )
+        ) : null}
+        <SecondaryButton icon={RefreshCw} disabled={checking} onClick={() => void check()}>
+          {checking ? "Проверка…" : "Проверить обновления"}
+        </SecondaryButton>
+      </div>
+    </CardView>
+  );
+}
+
 /** Settings hub. Groups every configuration and administration area into a
  *  single navigable index; each row opens a focused sub-screen. */
 export function SettingsView() {
   return (
     <ScreenScaffold title={strings.settings.title}>
       <div className="space-y-6">
+        <UpdateCheckCard />
         {groups.map((group) => (
           <div key={group.title} className="space-y-3">
             <SectionHeader title={group.title} />

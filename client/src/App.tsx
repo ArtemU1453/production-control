@@ -1,6 +1,7 @@
 import { Route, Router, Switch } from "wouter";
 import { AppProviders } from "@/app/providers/AppProviders";
 import { AppLayout } from "@/app/layout";
+import { UpdateBanner } from "@/app/UpdateBanner";
 import {
   ArchiveDetailView,
   ArchiveView,
@@ -56,6 +57,7 @@ function AppRouter() {
   useAppBootstrap();
   return (
     <AppLayout>
+      <UpdateBanner />
       <Switch>
         <Route path="/" component={DashboardView} />
         <Route path="/production" component={ProductionView} />

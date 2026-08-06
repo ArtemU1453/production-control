@@ -12,6 +12,7 @@ import {
 import type { CalcResult, CompleteCalculationOutcome } from "@/services";
 import { AuditAction } from "@/admin";
 import { makeId } from "@/utilities/id";
+import { computeTechScrap } from "@/core/production/techScrap";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -36,13 +37,16 @@ export type OrderPhase = "setup" | "running" | "paused" | "completed";
 /** A production-journal entry recorded while an order is in work. */
 export type ProductionLogKind =
   | "defect"
-  | "scrap"
+  | "tech"
   | "stop"
   | "comment"
   | "start"
   | "exhausted"
   | "connect"
-  | "continue";
+  | "continue"
+  | "pause"
+  | "resume"
+  | "finish";
 export interface ProductionLogEntry {
   id: string;
   kind: ProductionLogKind;
@@ -80,15 +84,6 @@ export interface DefectInput {
   comment?: string;
 }
 
-/** Detailed technological-scrap record entered during production. */
-export interface ScrapInput {
-  /** Количество метров тех. отхода. */
-  meters: number;
-  /** Причина. */
-  reason?: string;
-  /** Комментарий. */
-  comment?: string;
-}
 
 /** One Jumbo's contribution to a multi-Jumbo order chain. */
 export interface ChainStep {
@@ -246,7 +241,6 @@ interface ProductionViewModel {
   /** In-session production journal (defects, scrap, stops, notes). */
   productionLog: ProductionLogEntry[];
   addDefect: (detail: DefectInput) => void;
-  addScrap: (detail: ScrapInput) => void;
   addStop: (note?: string) => void;
   addNote: (note: string) => void;
   /** Брак за весь заказ, рул. (для итогового отчёта). */
@@ -257,12 +251,11 @@ interface ProductionViewModel {
   activeDefectCount: number;
   /** Площадь брака текущего Джамбо, м². */
   activeDefectAreaM2: number;
-  /** Записей тех. отхода по текущему Джамбо. */
-  activeScrapCount: number;
-  /** Тех. отход текущего Джамбо, м. */
-  activeScrapMetersM: number;
-  /** Живой остаток текущего Джамбо за вычетом его брака и тех. отхода, м (только
-   *  отображение — не мутирует запись Джамбо и не влияет на расчёт/списание). */
+  /** Технологический отход заказа, м — рассчитывается системой автоматически
+   *  (запуск, настройка, замены Джамбо, завершение). Не вводится вручную. */
+  techScrapM: number;
+  /** Живой остаток текущего Джамбо за вычетом его брака, м (только отображение —
+   *  не мутирует запись Джамбо и не влияет на расчёт/списание). */
   liveRemainderM: number;
   /** Final summary shown in the "completed" phase. */
   completionSummary: CompletionSummary | null;
@@ -504,12 +497,23 @@ export function useProductionViewModel(): ProductionViewModel {
         setOrderSummary(null);
         // Journal: current Jumbo fully used → next connected → production resumes.
         const switchAt = new Date().toISOString();
+        const changeScrap = computeTechScrap({ started: true, jumboChanges: 1, finished: false });
         setProductionLog((log) => [
           {
             id: makeId(),
             kind: "continue",
             at: switchAt,
             note: "Продолжено производство",
+            operator: order.operator || undefined,
+            jumboStockNumber: next.stockNumber,
+          },
+          // Технический цикл: заправка при замене Джамбо — считается автоматически.
+          {
+            id: makeId(),
+            kind: "tech",
+            at: switchAt,
+            note: "Заправка при замене Джамбо",
+            meters: changeScrap.changesM,
             operator: order.operator || undefined,
             jumboStockNumber: next.stockNumber,
           },
@@ -644,21 +648,25 @@ export function useProductionViewModel(): ProductionViewModel {
   const isActiveEntry = (entry: ProductionLogEntry): boolean =>
     activeStock !== undefined && entry.jumboStockNumber === activeStock;
   const defectEntries = productionLog.filter((entry) => entry.kind === "defect");
-  const scrapEntries = productionLog.filter((entry) => entry.kind === "scrap");
   // Order-wide totals (final report).
   const defectCount = defectEntries.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
   const defectAreaM2 = round1(defectEntries.reduce((sum, entry) => sum + (entry.areaM2 ?? 0), 0));
   // Active-Jumbo scope (live operator view — defects never carry between Jumbos).
   const activeDefects = defectEntries.filter(isActiveEntry);
-  const activeScraps = scrapEntries.filter(isActiveEntry);
   const activeDefectCount = activeDefects.reduce((sum, entry) => sum + (entry.count ?? 1), 0);
   const activeDefectAreaM2 = round1(activeDefects.reduce((sum, entry) => sum + (entry.areaM2 ?? 0), 0));
   const activeDefectMetersM = round1(activeDefects.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
-  const activeScrapCount = activeScraps.length;
-  const activeScrapMetersM = round1(activeScraps.reduce((sum, entry) => sum + (entry.meters ?? 0), 0));
   const liveRemainderM = selectedJumbo
-    ? Math.max(0, round1(selectedJumbo.currentRemainderM - activeDefectMetersM - activeScrapMetersM))
+    ? Math.max(0, round1(selectedJumbo.currentRemainderM - activeDefectMetersM))
     : 0;
+
+  // Technological scrap is computed automatically from production events —
+  // never entered by the operator (see core/production/techScrap).
+  const techScrapM = computeTechScrap({
+    started: phase !== "setup",
+    jumboChanges: chainSteps.length,
+    finished: phase === "completed",
+  }).totalM;
 
   const orderStatusLabel = (() => {
     if (phase === "completed") return "Выполнен";
@@ -686,11 +694,23 @@ export function useProductionViewModel(): ProductionViewModel {
     setBusyMachines((machines) =>
       machines.includes(order.machine) ? machines : [...machines, order.machine],
     );
+    const at = new Date().toISOString();
+    const startupScrap = computeTechScrap({ started: true, jumboChanges: 0, finished: false });
     setProductionLog((log) => [
+      // Технический цикл: запуск и заправка линии — считается автоматически.
+      {
+        id: makeId(),
+        kind: "tech",
+        at,
+        note: "Запуск и настройка линии",
+        meters: startupScrap.startupM + startupScrap.setupM,
+        operator: order.operator || undefined,
+        jumboStockNumber: selectedJumbo?.stockNumber,
+      },
       {
         id: makeId(),
         kind: "start",
-        at: new Date().toISOString(),
+        at,
         note: selectedJumbo ? `Джамбо № ${selectedJumbo.stockNumber}` : "Запуск линии",
         operator: order.operator || undefined,
         jumboStockNumber: selectedJumbo?.stockNumber,
@@ -701,11 +721,30 @@ export function useProductionViewModel(): ProductionViewModel {
   }, [canStart, params.orderRolls, order.machine, order.operator, selectedJumbo]);
 
   const pauseProduction = useCallback(() => {
-    setPhase((current) => (current === "running" ? "paused" : current));
-  }, []);
+    setPhase((current) => {
+      if (current === "running") {
+        // Записываем паузу: время и оператор фиксируются в записи журнала.
+        setProductionLog((log) => [
+          { id: makeId(), kind: "pause", at: new Date().toISOString(), note: "Пауза", operator: order.operator || undefined, jumboStockNumber: selectedJumbo?.stockNumber },
+          ...log,
+        ]);
+        return "paused";
+      }
+      return current;
+    });
+  }, [order.operator, selectedJumbo]);
   const resumeProduction = useCallback(() => {
-    setPhase((current) => (current === "paused" ? "running" : current));
-  }, []);
+    setPhase((current) => {
+      if (current === "paused") {
+        setProductionLog((log) => [
+          { id: makeId(), kind: "resume", at: new Date().toISOString(), note: "Возобновление", operator: order.operator || undefined, jumboStockNumber: selectedJumbo?.stockNumber },
+          ...log,
+        ]);
+        return "running";
+      }
+      return current;
+    });
+  }, [order.operator, selectedJumbo]);
 
   const pushLog = useCallback(
     (kind: ProductionLogKind, note?: string, count?: number, extra?: Partial<ProductionLogEntry>) => {
@@ -747,16 +786,6 @@ export function useProductionViewModel(): ProductionViewModel {
       });
     },
     [pushLog, selectedJumbo],
-  );
-  const addScrap = useCallback(
-    (detail: ScrapInput) => {
-      const meters = Math.max(0, round1(detail.meters || 0));
-      pushLog("scrap", detail.comment, undefined, {
-        reason: detail.reason,
-        meters: meters || undefined,
-      });
-    },
-    [pushLog],
   );
   const addStop = useCallback((note?: string) => pushLog("stop", note), [pushLog]);
   const addNote = useCallback((note: string) => pushLog("comment", note), [pushLog]);
@@ -800,6 +829,13 @@ export function useProductionViewModel(): ProductionViewModel {
           durationMs: startedSnapshot ? Date.now() - new Date(startedSnapshot).getTime() : 0,
           steps,
         });
+        // Технический цикл завершения (подрезка/переход) + запись о завершении.
+        const finishTech = computeTechScrap({ started: true, jumboChanges: priorSteps.length, finished: true });
+        setProductionLog((log) => [
+          { id: makeId(), kind: "finish", at: new Date().toISOString(), note: "Производство завершено", operator: order.operator || undefined },
+          { id: makeId(), kind: "tech", at: new Date().toISOString(), note: "Завершение и переход", meters: finishTech.finishM, operator: order.operator || undefined },
+          ...log,
+        ]);
         setBusyMachines((machines) => machines.filter((m) => m !== machine));
         setPhase("completed");
       }
@@ -819,6 +855,7 @@ export function useProductionViewModel(): ProductionViewModel {
     order.machine,
     order.orderNumber,
     order.customer,
+    order.operator,
     startedAt,
     defectCount,
     execute,
@@ -875,15 +912,13 @@ export function useProductionViewModel(): ProductionViewModel {
     newOrder,
     productionLog,
     addDefect,
-    addScrap,
     addStop,
     addNote,
     defectCount,
     defectAreaM2,
     activeDefectCount,
     activeDefectAreaM2,
-    activeScrapCount,
-    activeScrapMetersM,
+    techScrapM,
     liveRemainderM,
     completionSummary,
     machineStatusLabel,

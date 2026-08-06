@@ -3,6 +3,7 @@ import { useServices } from "@/core/di/AppServices";
 import {
   JumboStatus,
   Machine,
+  MaterialStatus,
   RollDestination,
   type CuttingOrderInput,
   type Jumbo,
@@ -158,6 +159,14 @@ function currentTime(): string {
   return new Date().toTimeString().slice(0, 5);
 }
 
+/** Auto-generated order number (the manual "Заказ" field was removed — the task
+ *  now starts from the material). Unique to the second. */
+function generateOrderNumber(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `ORD-${d.getFullYear().toString().slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -196,6 +205,14 @@ interface ProductionViewModel {
   loading: boolean;
   order: OrderInfo;
   updateOrder: <K extends keyof OrderInfo>(key: K, value: OrderInfo[K]) => void;
+  /** Active materials the operator picks from as the first step. */
+  materials: Material[];
+  /** Selected material — the primary filter for the whole task ("" = none). */
+  materialId: string;
+  setMaterialId: (id: string) => void;
+  /** The selected material record (null until one is chosen). */
+  selectedMaterial: Material | null;
+  /** Jumbos available for production — filtered to the selected material. */
   availableJumbos: Jumbo[];
   materialsById: Map<string, Material>;
   selectedJumbo: Jumbo | null;
@@ -304,13 +321,15 @@ export function useProductionViewModel(): ProductionViewModel {
 
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState<Jumbo[]>([]);
+  const [activeMaterials, setActiveMaterials] = useState<Material[]>([]);
+  const [materialId, setMaterialIdState] = useState("");
   const [materialsById, setMaterialsById] = useState<Map<string, Material>>(new Map());
   const [selectedJumbo, setSelectedJumbo] = useState<Jumbo | null>(null);
   const [order, setOrder] = useState<OrderInfo>({
     date: todayIsoDate(),
     time: currentTime(),
     customer: "",
-    orderNumber: "",
+    orderNumber: generateOrderNumber(),
     operator: "",
     machine: Machine.machine1,
     comment: "",
@@ -345,8 +364,24 @@ export function useProductionViewModel(): ProductionViewModel {
           (jumbo.status === JumboStatus.onStock || jumbo.status === JumboStatus.inWork),
       ),
     );
+    setActiveMaterials(materialList.filter((material) => material.status === MaterialStatus.active));
     setMaterialsById(new Map(materialList.map((material) => [material.id, material])));
   }, [jumbos, materials]);
+
+  // Selecting a material is the first step and the primary filter — changing it
+  // clears the current Jumbo, chain and roll parameters.
+  const setMaterialId = useCallback((id: string) => {
+    setMaterialIdState(id);
+    setSelectedJumbo(null);
+    setOutcome(null);
+    setChainId(null);
+    setChainSteps([]);
+    setProducedMain(0);
+    setOrderTotalRolls(null);
+    setChainJumboIds([]);
+    setOrderSummary(null);
+    setParams(emptyParams());
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -435,12 +470,24 @@ export function useProductionViewModel(): ProductionViewModel {
 
   const canExecute = planStatus === "ok" && plan !== null && orderValid && jumboValid;
 
+  const selectedMaterial = useMemo(
+    () => (materialId ? materialsById.get(materialId) ?? null : null),
+    [materialsById, materialId],
+  );
+
+  // Every Jumbo list is scoped to the selected material — nothing is shown until
+  // a material is chosen, and only that material's rolls appear afterwards.
+  const availableForMaterial = useMemo(
+    () => (materialId ? available.filter((jumbo) => jumbo.materialId === materialId) : []),
+    [available, materialId],
+  );
+
   const eligibleForContinue = useMemo(
     () =>
-      available.filter(
+      availableForMaterial.filter(
         (jumbo) => jumbo.id !== selectedJumbo?.id && !chainJumboIds.includes(jumbo.id),
       ),
-    [available, selectedJumbo, chainJumboIds],
+    [availableForMaterial, selectedJumbo, chainJumboIds],
   );
 
   const canContinue =
@@ -879,11 +926,12 @@ export function useProductionViewModel(): ProductionViewModel {
     // Полный сброс формы: пользовательские поля очищаются, системные (оператор,
     // станок) сохраняются, дата/время обновляются.
     setParams(emptyParams());
+    setMaterialIdState("");
     setOrder((previous) => ({
       ...previous,
       date: todayIsoDate(),
       time: currentTime(),
-      orderNumber: "",
+      orderNumber: generateOrderNumber(),
       customer: "",
       comment: "",
     }));
@@ -894,7 +942,11 @@ export function useProductionViewModel(): ProductionViewModel {
     loading,
     order,
     updateOrder,
-    availableJumbos: available,
+    materials: activeMaterials,
+    materialId,
+    setMaterialId,
+    selectedMaterial,
+    availableJumbos: availableForMaterial,
     materialsById,
     selectedJumbo,
     selectJumbo,

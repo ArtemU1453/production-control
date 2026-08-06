@@ -19,6 +19,10 @@ export {
 } from "./ArchivedJumboRepository";
 export { createWasteRepository, type WasteRepository } from "./WasteRepository";
 export {
+  createFinishedRollRepository,
+  type FinishedRollRepository,
+} from "./FinishedRollRepository";
+export {
   createSettingsRepository,
   type SettingsRepository,
 } from "./SettingsRepository";

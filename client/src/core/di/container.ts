@@ -3,6 +3,7 @@ import type { KeyValueStore } from "../../storage/KeyValueStore";
 import {
   createArchivedJumboRepository,
   createCuttingSessionRepository,
+  createFinishedRollRepository,
   createJumboOperationRepository,
   createJumboRepository,
   createMaterialRepository,
@@ -10,6 +11,7 @@ import {
   createWasteRepository,
   type ArchivedJumboRepository,
   type CuttingSessionRepository,
+  type FinishedRollRepository,
   type JumboOperationRepository,
   type JumboRepository,
   type MaterialRepository,
@@ -18,9 +20,11 @@ import {
 } from "../../repositories";
 import {
   createCalculationService,
+  createFinishedGoodsService,
   createReportBuilder,
   createWarehouseService,
   type CalculationService,
+  type FinishedGoodsService,
   type ReportBuilder,
   type WarehouseService,
 } from "../../services";
@@ -57,10 +61,13 @@ export interface AppContainer {
   jumboOperations: JumboOperationRepository;
   wastes: WasteRepository;
   archivedJumbos: ArchivedJumboRepository;
+  finishedRolls: FinishedRollRepository;
   settings: SettingsRepository;
   calculation: CalculationService;
   reportBuilder: ReportBuilder;
   warehouse: WarehouseService;
+  /** Finished-goods warehouse: готовые рулоны ledger, separate from materials. */
+  finishedGoods: FinishedGoodsService;
   /** Report Center: report generation, cache and export/email providers. */
   reportCenter: ReportCenter;
   /** Documents: PDF generation, email delivery, history and scheduling. */
@@ -86,6 +93,7 @@ export function createAppContainer(
   const cuttingSessions = createCuttingSessionRepository(store);
   const wastes = createWasteRepository(store);
   const archivedJumbos = createArchivedJumboRepository(store);
+  const finishedRolls = createFinishedRollRepository(store);
   const materials = createMaterialRepository(store);
   const settings = createSettingsRepository(store);
   const reportCenter = createReportCenter({
@@ -135,6 +143,7 @@ export function createAppContainer(
     jumboOperations,
     wastes,
     archivedJumbos,
+    finishedRolls,
     settings,
     calculation: createCalculationService(),
     reportBuilder: createReportBuilder(),
@@ -146,6 +155,7 @@ export function createAppContainer(
       archivedJumbos,
       settings,
     ),
+    finishedGoods: createFinishedGoodsService(finishedRolls),
     reportCenter,
     documents,
     analytics: createAnalyticsService(reportCenter.repository, createKpiEngine()),

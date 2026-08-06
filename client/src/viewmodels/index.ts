@@ -35,6 +35,14 @@ export {
   type MaterialDraft,
 } from "./useMaterialEditorViewModel";
 export { useReceiptViewModel, type ReceiptItemDraft, type JumboDraftInput } from "./useReceiptViewModel";
+export {
+  useFinishedGoodsViewModel,
+  useFinishedRollViewModel,
+  emptyFinishedGoodsFilters,
+  type FinishedGoodsStatusFilter,
+  type FinishedGoodsFilters,
+  type FinishedGoodsAnalytics,
+} from "./useFinishedGoodsViewModel";
 export { useJumboDetailViewModel, type JumboEdit } from "./useJumboDetailViewModel";
 export {
   useArchiveViewModel,

@@ -15,6 +15,12 @@ export type {
   CloseJumboOutcome,
   JumboCloseSummary,
 } from "./WarehouseService";
+export { createFinishedGoodsService } from "./FinishedGoodsService";
+export type {
+  FinishedGoodsService,
+  FinishedGoodsCompletionInput,
+  FinishedGoodsJumboShare,
+} from "./FinishedGoodsService";
 export { createReportBuilder } from "./ReportBuilder";
 export type {
   ReportBuilder,

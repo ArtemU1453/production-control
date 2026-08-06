@@ -7,6 +7,8 @@ import {
   ArchiveView,
   CalculatorView,
   DashboardView,
+  FinishedGoodsView,
+  FinishedRollDetailView,
   HistoryView,
   JumboDetailView,
   MaterialEditorView,
@@ -74,6 +76,10 @@ function AppRouter() {
         <Route path="/warehouse/receipt" component={ReceiptView} />
         <Route path="/warehouse/:id">
           {(params) => <JumboDetailView jumboId={params.id} />}
+        </Route>
+        <Route path="/finished-goods" component={FinishedGoodsView} />
+        <Route path="/finished-goods/:id">
+          {(params) => <FinishedRollDetailView rollId={params.id} />}
         </Route>
         <Route path="/archive" component={ArchiveView} />
         <Route path="/archive/:id">

@@ -320,7 +320,7 @@ interface ProductionViewModel {
  * scenario is extended, plus a `chainId` stamped on each session to link them.
  */
 export function useProductionViewModel(): ProductionViewModel {
-  const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions } =
+  const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions, finishedGoods } =
     useServices();
 
   const [loading, setLoading] = useState(true);
@@ -876,6 +876,8 @@ export function useProductionViewModel(): ProductionViewModel {
       const machine = order.machine;
       const startedSnapshot = startedAt;
       const defects = defectCount;
+      const chainIdAtFinish = chainId;
+      const logSnapshot = productionLog;
 
       const result = await execute();
       if (result && jumboAtFinish && planAtFinish) {
@@ -908,6 +910,42 @@ export function useProductionViewModel(): ProductionViewModel {
           durationMs: startedSnapshot ? Date.now() - new Date(startedSnapshot).getTime() : 0,
           steps,
         });
+
+        // ── Готовая продукция: автоматическое оприходование ────────────────
+        // Каждый годный рулон становится отдельной единицей на складе готовых
+        // рулонов. Брак сюда не попадает — только изготовлено − брак. При
+        // назначении «В заказ» первые `target` закрывают заказ, излишек идёт на
+        // склад; при «На склад» все годные рулоны сразу на склад. Джамбо-атрибуция
+        // сохраняется по шагам цепочки.
+        const defectsByJumbo = new Map<string, number>();
+        for (const entry of logSnapshot) {
+          if (entry.kind === "defect" && entry.jumboStockNumber) {
+            defectsByJumbo.set(
+              entry.jumboStockNumber,
+              (defectsByJumbo.get(entry.jumboStockNumber) ?? 0) + (entry.count ?? 1),
+            );
+          }
+        }
+        const perJumbo = steps.map((step) => ({
+          jumboStockNumber: step.jumboStockNumber,
+          goodRolls: Math.max(0, step.producedMainRolls - (defectsByJumbo.get(step.jumboStockNumber) ?? 0)),
+        }));
+        await finishedGoods.materializeFromCompletion({
+          orderNumber: order.orderNumber,
+          materialId,
+          materialCode: jumboAtFinish.materialCode,
+          widthMm: params.rollWidthMm,
+          lengthM: params.rollLengthM,
+          machine,
+          operator: order.operator,
+          producedAt: new Date().toISOString(),
+          targetRolls: target,
+          destination: params.additionalDestination,
+          perJumbo,
+          sessionId: result.session.id,
+          chainId: chainIdAtFinish ?? undefined,
+        });
+
         // Технический цикл завершения (подрезка/переход) + запись о завершении.
         const finishTech = computeTechScrap({ started: true, jumboChanges: priorSteps.length, finished: true });
         setProductionLog((log) => [
@@ -931,12 +969,19 @@ export function useProductionViewModel(): ProductionViewModel {
     producedMain,
     orderTotalRolls,
     params.orderRolls,
+    params.rollWidthMm,
+    params.rollLengthM,
+    params.additionalDestination,
     order.machine,
     order.orderNumber,
     order.customer,
     order.operator,
     startedAt,
     defectCount,
+    chainId,
+    productionLog,
+    materialId,
+    finishedGoods,
     execute,
   ]);
 

@@ -25,6 +25,7 @@ export const tabs: readonly TabDefinition[] = [
  *  professional navigation. */
 export const secondaryNav: readonly TabDefinition[] = [
   { key: "production", path: "/production", label: "Производство", icon: "gauge" },
+  { key: "finished-goods", path: "/finished-goods", label: "Готовая продукция", icon: "finished" },
   { key: "analytics", path: "/analytics", label: "Аналитика", icon: "analytics" },
   { key: "documents", path: "/documents", label: "Документы", icon: "reports" },
   { key: "archive", path: "/archive", label: "Архив", icon: "archive" },

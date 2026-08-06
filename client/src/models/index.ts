@@ -15,6 +15,13 @@ export type { JumboOperation } from "./JumboOperation";
 export type { ArchivedJumbo, ArchivedJumboStatistics } from "./ArchivedJumbo";
 export type { AppSettings } from "./Settings";
 export type { Report } from "./Report";
+export type { FinishedRoll, FinishedRollHistoryEntry } from "./FinishedRoll";
+export {
+  FinishedRollStatus,
+  finishedRollStatusTitle,
+  finishedRollStatusColorRole,
+  finishedRollStatusOrder,
+} from "./FinishedRoll";
 
 export {
   JumboStatus,

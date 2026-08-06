@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
 import {
+  DEFAULT_COATING,
   JumboStatus,
   Machine,
   MaterialStatus,
@@ -336,6 +337,7 @@ export function useProductionViewModel(): ProductionViewModel {
     orderNumber: generateOrderNumber(),
     operator: "",
     machine: Machine.machine1,
+    coating: DEFAULT_COATING,
     comment: "",
   });
   const [params, setParams] = useState<ProductionParams>(emptyParams);
@@ -938,6 +940,7 @@ export function useProductionViewModel(): ProductionViewModel {
           lengthM: params.rollLengthM,
           machine,
           operator: order.operator,
+          coating: order.coating,
           producedAt: new Date().toISOString(),
           targetRolls: target,
           destination: params.additionalDestination,
@@ -1000,6 +1003,7 @@ export function useProductionViewModel(): ProductionViewModel {
       time: currentTime(),
       orderNumber: generateOrderNumber(),
       customer: "",
+      coating: DEFAULT_COATING,
       comment: "",
     }));
     reset();

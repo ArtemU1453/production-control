@@ -20,7 +20,7 @@ import {
 } from "@/components";
 import { icons } from "@/resources/icons";
 import { strings } from "@/resources/strings";
-import { machineTitle, type CuttingSession } from "@/models";
+import { coatingTitle, machineTitle, type CuttingSession } from "@/models";
 import { formatDateTime } from "@/extensions/date";
 import { formatMeters } from "@/extensions/number";
 import { useHistoryViewModel } from "@/viewmodels";
@@ -122,7 +122,8 @@ export function HistoryView() {
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {formatDateTime(group.session.createdAt)} · Джамб № {group.session.jumboStockNumber} ·{" "}
-                      {machineTitle(group.session.order.machine)} · Рулонов:{" "}
+                      {machineTitle(group.session.order.machine)}
+                      {group.session.order.coating ? ` · ${coatingTitle(group.session.order.coating)}` : ""} · Рулонов:{" "}
                       {group.session.result.total_rolls}
                     </div>
                   </div>

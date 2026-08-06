@@ -1,4 +1,5 @@
-import { Archive } from "lucide-react";
+import { Archive, ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 import {
   CardView,
   EmptyState,
@@ -6,6 +7,7 @@ import {
   LoadingView,
   ScreenScaffold,
 } from "@/components";
+import { Button } from "@/components/ui/button";
 import { icons } from "@/resources/icons";
 import {
   jumboOperationTitle,
@@ -38,7 +40,16 @@ export function ArchiveDetailView({ archiveId }: { archiveId: string }) {
   const { archived, report } = vm;
 
   return (
-    <ScreenScaffold title={`Архив № ${archived.jumbo.stockNumber}`}>
+    <ScreenScaffold
+      title={`Архив № ${archived.jumbo.stockNumber}`}
+      toolbar={
+        <Link href="/archive">
+          <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Назад в архив">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+      }
+    >
       <div className="space-y-4">
         {report.sections.map((section) => (
           <CardView key={section.title} title={section.title} icon={icons.analytics} animate>

@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { AppTypography } from "@/designsystem";
 import {
   FinishedRollStatus,
+  coatingTitle,
   finishedRollStatusColorRole,
   finishedRollStatusTitle,
   machineTitle,
@@ -101,11 +102,13 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
             <InfoRow label="Ширина" value={`${roll.widthMm} мм`} />
             <InfoRow label="Длина" value={`${roll.lengthM} м`} />
             <InfoRow label="Количество" value={`${roll.count} шт.`} />
+            {roll.coating ? <InfoRow label="Красящий слой" value={coatingTitle(roll.coating)} /> : null}
             <InfoRow label="Дата изготовления" value={formatDateTime(roll.producedAt)} />
             <InfoRow label="Станок" value={machineTitle(roll.machine)} />
             <InfoRow label="Оператор" value={roll.operator || "—"} />
             <InfoRow label="Джамбо" value={roll.jumboStockNumber || "—"} />
             <InfoRow label="Заказ" value={roll.orderNumber || "—"} />
+            {roll.sourceReason ? <InfoRow label="Причина появления" value={roll.sourceReason} /> : null}
             {roll.storageLocation ? <InfoRow label="Место хранения" value={roll.storageLocation} /> : null}
             <InfoRow label="Статус" value={finishedRollStatusTitle(roll.status)} last={!roll.comment} />
             {roll.comment ? <InfoRow label="Комментарий" value={roll.comment} last /> : null}

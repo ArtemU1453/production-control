@@ -1,4 +1,4 @@
-import { machineTitle, type CuttingSession } from "@/models";
+import { coatingTitle, machineTitle, type CuttingSession } from "@/models";
 import { ReportGrouping, ReportSort } from "../models/ReportFilter";
 import { ReportKind } from "../models/ReportKind";
 import type { ReportContext } from "../repositories/ReportContext";
@@ -83,6 +83,7 @@ export const ordersBuilder: ReportBuilder = {
         { key: "orderNumber", title: "№ заказа" },
         { key: "operator", title: "Оператор" },
         { key: "machine", title: "Станок" },
+        { key: "coating", title: "Слой" },
         { key: "material", title: "Материал" },
         { key: "jumbo", title: "Джамб" },
         { key: "rolls", title: "Рулоны", numeric: true },
@@ -98,6 +99,7 @@ export const ordersBuilder: ReportBuilder = {
           orderNumber: session.order.orderNumber || "—",
           operator: session.order.operator || "—",
           machine: machineTitle(session.order.machine),
+          coating: session.order.coating ? coatingTitle(session.order.coating) : "—",
           material: session.materialCode,
           jumbo: session.jumboStockNumber,
           rolls: session.result.total_rolls,

@@ -30,7 +30,6 @@ import {
 import {
   CardView,
   EmptyState,
-  IdentifierInput,
   LoadingView,
   PrimaryButton,
   ScreenScaffold,
@@ -480,8 +479,8 @@ export function ProductionView() {
   // Single source of truth for the start button (vm.canStart) — this only
   // surfaces which required field is still missing.
   const startRequirements = [
+    { ok: Boolean(vm.materialId), label: "Материал" },
     { ok: Boolean(vm.selectedJumbo), label: "Джамбо" },
-    { ok: vm.order.orderNumber.trim().length > 0, label: "Код заказа" },
     { ok: vm.order.customer.trim().length > 0, label: "Заказчик" },
     { ok: vm.order.operator.trim().length > 0, label: "Оператор" },
     { ok: Boolean(vm.order.machine), label: "Станок" },
@@ -511,11 +510,22 @@ export function ProductionView() {
           {/* ── Order header (one compact row) ───────────────────────── */}
           <CardView className="p-3">
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
-              <Field label="Заказ">
+              <Field label="Материал">
                 {locked ? (
-                  <StaticValue>{vm.order.orderNumber || "—"}</StaticValue>
+                  <StaticValue>{vm.selectedMaterial ? vm.selectedMaterial.code : "—"}</StaticValue>
                 ) : (
-                  <IdentifierInput id="order-number" value={vm.order.orderNumber} onChange={(v) => vm.updateOrder("orderNumber", v)} />
+                  <Select value={vm.materialId} onValueChange={vm.setMaterialId}>
+                    <SelectTrigger className="rounded-2xl">
+                      <SelectValue placeholder="Выберите материал" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vm.materials.map((material) => (
+                        <SelectItem key={material.id} value={material.id}>
+                          {material.code} · {material.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </Field>
               <Field label="Заказчик">
@@ -584,6 +594,22 @@ export function ProductionView() {
                     </SecondaryButton>
                   </div>
                 ) : null}
+              </div>
+            ) : !vm.materialId ? (
+              <div className={cn(AppTypography.footnote, "text-muted-foreground")}>
+                Сначала выберите материал — список Джамбо отфильтруется по нему.
+              </div>
+            ) : vm.availableJumbos.length === 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className={cn(AppTypography.footnote, "text-amber-600 dark:text-amber-400")}>
+                  Нет доступных Джамбо материала {vm.selectedMaterial?.code ?? ""}.
+                </span>
+                <div className="flex items-center gap-2">
+                  <SecondaryButton onClick={() => vm.setMaterialId("")}>Выбрать другой материал</SecondaryButton>
+                  <Link href="/warehouse/receipt">
+                    <PrimaryButton icon={icons.boxes}>Поступление сырья</PrimaryButton>
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-2">

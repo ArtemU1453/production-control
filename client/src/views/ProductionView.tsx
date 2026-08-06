@@ -524,7 +524,7 @@ export function ProductionView() {
                     <SelectTrigger className="rounded-2xl">
                       <SelectValue placeholder="Выберите материал" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[min(60vh,var(--radix-select-content-available-height))]">
                       {vm.materials.map((material) => (
                         <SelectItem key={material.id} value={material.id}>
                           {material.code} · {material.name}

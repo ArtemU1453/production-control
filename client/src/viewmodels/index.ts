@@ -15,7 +15,6 @@ export {
   type OrderPhase,
   type ProductionLogEntry,
   type DefectInput,
-  type ScrapInput,
   type CompletionSummary,
   MACHINE_STATUS,
   NOT_ENOUGH_MATERIAL_MESSAGE,

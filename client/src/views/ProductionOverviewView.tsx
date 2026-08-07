@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
@@ -38,6 +39,7 @@ import {
   deriveMachineStats,
   timeOf,
 } from "./ProductionView";
+import { CuttingVisualizer, buildCuttingModel, type StripeKind } from "./calculator";
 
 type ProductionVM = ReturnType<typeof useProductionViewModel>;
 
@@ -190,6 +192,7 @@ function ActiveBody({ vm, machine }: { vm: ProductionVM; machine: Machine }) {
   const { toast } = useToast();
   const stats = deriveMachineStats(vm);
   const plan = stats.plan;
+  const [schemeKind, setSchemeKind] = useState<StripeKind | null>(null);
   const insufficient = vm.planStatus === "insufficient";
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
   const coating = vm.order.coating ?? Coating.out;
@@ -237,6 +240,15 @@ function ActiveBody({ vm, machine }: { vm: ProductionVM; machine: Machine }) {
           <span>Доп. размеры <span className="font-medium text-foreground">{additionalLabel}</span></span>
         </div>
       </div>
+
+      {/* Cutting scheme — the live raskroy for this machine's plan. */}
+      {plan ? (
+        <CuttingVisualizer
+          model={buildCuttingModel(plan)}
+          activeKind={schemeKind}
+          onActiveKindChange={setSchemeKind}
+        />
+      ) : null}
 
       {/* Statistics */}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">

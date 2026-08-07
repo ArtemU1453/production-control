@@ -28,6 +28,8 @@ export function createCalculationService(): CalculationService {
         input.bigRollLengthM,
         input.orderRolls,
         input.additionalWidthMm ?? null,
+        input.additionalWidthMm2 ?? null,
+        input.additionalAuto ?? true,
       );
     },
   };

@@ -87,6 +87,8 @@ export type CalcResult = {
   main_count: number;
   remaining_width_mm: number;
   additional_width_mm: number | null;
+  /** Second additional size (мм), only used in manual mode. */
+  additional_width_mm_2: number | null;
   was_adjusted: boolean;
   rolls_per_cycle: number;
   cycles_needed: number;
@@ -98,6 +100,10 @@ export type CalcResult = {
   length_waste_m: number;
   total_main_rolls: number;
   total_additional_rolls: number;
+  /** Additional rolls of the first additional size. */
+  total_additional_rolls_1: number;
+  /** Additional rolls of the second additional size. */
+  total_additional_rolls_2: number;
   total_rolls: number;
   surplus_rolls: number;
   surplus_main_rolls: number;
@@ -123,6 +129,8 @@ export function calculate(
   big_roll_length_m: number,
   order_rolls: number,
   additional_width_mm: number | null = null,
+  additional_width_mm_2: number | null = null,
+  auto_additional: boolean = true,
 ): CalcResult {
   _validate_inputs(
     material_width_mm,
@@ -138,24 +146,38 @@ export function calculate(
   order_rolls = Math.floor(order_rolls);
 
   const roll_width_input_mm = roll_width_mm;
-  let additional_width_override: number | null = null;
-  if (additional_width_mm !== null) {
-    additional_width_override = Number(additional_width_mm);
-    if (isNaN(additional_width_override)) {
-      throw new Error("Некорректный доп. размер.");
+
+  // Parse the manual additional-size overrides (up to two). A non-positive or
+  // absent value means "not set" for that slot.
+  function parseOverride(value: number | null, label: string): number | null {
+    if (value === null) {
+      return null;
     }
-    if (additional_width_override <= 0) {
-      additional_width_override = null;
-    } else if (additional_width_override < RANGE_ROLL_WIDTH[0] || additional_width_override > RANGE_ROLL_WIDTH[1]) {
-      throw new Error("Доп. размер должен быть от 20 до 310 мм.");
+    const n = Number(value);
+    if (isNaN(n)) {
+      throw new Error(`Некорректный ${label}.`);
     }
+    if (n <= 0) {
+      return null;
+    }
+    if (n < RANGE_ROLL_WIDTH[0] || n > RANGE_ROLL_WIDTH[1]) {
+      throw new Error(`${label} должен быть от 20 до 310 мм.`);
+    }
+    return n;
   }
+  const override_1 = parseOverride(additional_width_mm, "доп. размер");
+  const override_2 = parseOverride(additional_width_mm_2, "доп. размер №2");
+
+  // Pure auto mode: no manual override in either slot and auto is enabled. Only
+  // then is the roll-width auto-adjustment applied and one additional size
+  // auto-detected from the leftover width (the original behaviour, unchanged).
+  const auto_mode = auto_additional && override_1 === null && override_2 === null;
 
   let main_count = 0;
   let remaining_width = 0;
   let was_adjusted = false;
 
-  if (additional_width_override === null) {
+  if (auto_mode) {
     const adj = _apply_roll_width_adjustment(useful_width_mm, roll_width_mm);
     roll_width_mm = adj.roll_width_mm;
     main_count = adj.main_count;
@@ -168,15 +190,30 @@ export function calculate(
   }
 
   let additional_width: number | null = null;
-  if (additional_width_override !== null) {
-    if (additional_width_override - remaining_width > 1e-6) {
+  if (auto_mode) {
+    if (!was_adjusted && remaining_width >= RANGE_ROLL_WIDTH[0] && remaining_width <= RANGE_ROLL_WIDTH[1]) {
+      additional_width = remaining_width;
+    }
+  } else if (override_1 !== null) {
+    if (override_1 - remaining_width > 1e-6) {
       throw new Error(
-        `Доп. размер ${additional_width_override.toFixed(1)} мм больше остатка ${remaining_width.toFixed(1)} мм.`
+        `Доп. размер ${override_1.toFixed(1)} мм больше остатка ${remaining_width.toFixed(1)} мм.`
       );
     }
-    additional_width = additional_width_override;
-  } else if (!was_adjusted && remaining_width >= RANGE_ROLL_WIDTH[0] && remaining_width <= RANGE_ROLL_WIDTH[1]) {
-    additional_width = remaining_width;
+    additional_width = override_1;
+  }
+
+  // Second additional size — manual only. Cut from the width left after the main
+  // rolls and the first additional roll.
+  let additional_width_2: number | null = null;
+  if (override_2 !== null) {
+    const remaining_after_1 = remaining_width - (additional_width || 0);
+    if (override_2 - remaining_after_1 > 1e-6) {
+      throw new Error(
+        `Доп. размер №2 ${override_2.toFixed(1)} мм больше остатка ${remaining_after_1.toFixed(1)} мм.`
+      );
+    }
+    additional_width_2 = override_2;
   }
 
   const available_length_m = big_roll_length_m - SETUP_LENGTH_M;
@@ -209,11 +246,13 @@ export function calculate(
   const estimated_hours = cycles_per_hour ? (cycles_needed / cycles_per_hour) + 0.25 : null;
 
   const total_main_rolls = main_count * cycles_used;
-  const total_additional_rolls = additional_width ? cycles_used : 0;
+  const total_additional_rolls_1 = additional_width ? cycles_used : 0;
+  const total_additional_rolls_2 = additional_width_2 ? cycles_used : 0;
+  const total_additional_rolls = total_additional_rolls_1 + total_additional_rolls_2;
   const total_rolls = total_main_rolls + total_additional_rolls;
 
   const surplus_main_rolls = Math.max(0, total_main_rolls - order_rolls);
-  const surplus_additional_rolls = additional_width ? total_additional_rolls : 0;
+  const surplus_additional_rolls = total_additional_rolls;
   const surplus_rolls = surplus_main_rolls + surplus_additional_rolls;
   const shortage_rolls = Math.max(0, order_rolls - total_main_rolls);
 
@@ -229,7 +268,7 @@ export function calculate(
   }
 
   const total_area_m2 = (material_width_mm / 1000) * used_length_m;
-  const useful_width_sum_mm = main_count * roll_width_mm + (additional_width || 0);
+  const useful_width_sum_mm = main_count * roll_width_mm + (additional_width || 0) + (additional_width_2 || 0);
   const useful_area_m2 = (useful_width_sum_mm / 1000) * (cycles_used * roll_length_m);
   const waste_area_m2 = total_area_m2 - useful_area_m2;
   const waste_percent = total_area_m2 > 0 ? (waste_area_m2 / total_area_m2) * 100 : 0;
@@ -242,7 +281,7 @@ export function calculate(
 
   // Расчет оптимальных дополнительных рулонов, если отход больше 7%
   let optimal_additional_rolls: Array<{ width: number; count: number }> | null = null;
-  if (waste_percent > 7 && !additional_width_override) {
+  if (waste_percent > 7 && override_1 === null && override_2 === null) {
     optimal_additional_rolls = [];
     const min_roll_width = RANGE_ROLL_WIDTH[0];
     const max_roll_width = RANGE_ROLL_WIDTH[1];
@@ -289,6 +328,7 @@ export function calculate(
     main_count,
     remaining_width_mm: remaining_width,
     additional_width_mm: additional_width,
+    additional_width_mm_2: additional_width_2,
     was_adjusted,
     rolls_per_cycle,
     cycles_needed,
@@ -300,6 +340,8 @@ export function calculate(
     length_waste_m,
     total_main_rolls,
     total_additional_rolls,
+    total_additional_rolls_1,
+    total_additional_rolls_2,
     total_rolls,
     surplus_rolls,
     surplus_main_rolls,

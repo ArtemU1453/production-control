@@ -27,7 +27,12 @@ export interface ProductionParams {
   rollWidthMm: number;
   rollLengthM: number;
   orderRolls: number;
+  /** Первый дополнительный размер, мм (в авто-режиме определяется системой). */
   additionalWidthMm?: number;
+  /** Второй дополнительный размер, мм (только ручной режим). */
+  additionalWidthMm2?: number;
+  /** Режим доп. размеров: true — авто (по остатку), false — вручную. */
+  additionalAuto: boolean;
   additionalDestination: RollDestination;
 }
 
@@ -43,6 +48,8 @@ function emptyParams(): ProductionParams {
     rollLengthM: 0,
     orderRolls: 0,
     additionalWidthMm: undefined,
+    additionalWidthMm2: undefined,
+    additionalAuto: true,
     additionalDestination: RollDestination.order,
   };
 }
@@ -111,6 +118,11 @@ export interface ChainStep {
   /** Main (order) rolls produced on this Jumbo. */
   producedMainRolls: number;
   additionalRolls: number;
+  /** Per-size additional-roll breakdown (so sizes never mix on the warehouse). */
+  additional1Width: number | null;
+  additional1Count: number;
+  additional2Width: number | null;
+  additional2Count: number;
   /** Remainder left on this Jumbo after its part of the order (preserved). */
   remainderAfterM: number;
   /** Length consumed from this Jumbo for the order. */
@@ -211,6 +223,10 @@ function buildStep(jumbo: Jumbo, plan: CalcResult, outcome: CompleteCalculationO
     materialCode: jumbo.materialCode,
     producedMainRolls: plan.total_main_rolls,
     additionalRolls: plan.total_additional_rolls,
+    additional1Width: plan.additional_width_mm,
+    additional1Count: plan.total_additional_rolls_1,
+    additional2Width: plan.additional_width_mm_2,
+    additional2Count: plan.total_additional_rolls_2,
     remainderAfterM: outcome.remainderAfterM,
     consumedM: round1(Math.max(0, jumbo.currentRemainderM - outcome.remainderAfterM)),
     usefulAreaM2: plan.useful_area_m2,
@@ -540,7 +556,9 @@ export function useProductionViewModel(): ProductionViewModel {
       rollLengthM: params.rollLengthM,
       bigRollLengthM: selectedJumbo.currentRemainderM,
       orderRolls: params.orderRolls,
-      additionalWidthMm: params.additionalWidthMm,
+      additionalWidthMm: params.additionalAuto ? undefined : params.additionalWidthMm,
+      additionalWidthMm2: params.additionalAuto ? undefined : params.additionalWidthMm2,
+      additionalAuto: params.additionalAuto,
     };
   }, [selectedJumbo, params]);
 
@@ -1038,6 +1056,23 @@ export function useProductionViewModel(): ProductionViewModel {
           jumboStockNumber: step.jumboStockNumber,
           goodRolls: Math.max(0, step.producedMainRolls - (defectsByJumbo.get(step.jumboStockNumber) ?? 0)),
         }));
+        // Дополнительные размеры — байпродукт, каждый размер отдельно. На склад
+        // только при назначении «На склад»; при «В заказ» они уходят с заказом.
+        const additionalSizes: { widthMm: number; count: number }[] = [];
+        if (params.additionalDestination === RollDestination.warehouse) {
+          const byWidth = new Map<number, number>();
+          for (const step of steps) {
+            if (step.additional1Width && step.additional1Count > 0) {
+              byWidth.set(step.additional1Width, (byWidth.get(step.additional1Width) ?? 0) + step.additional1Count);
+            }
+            if (step.additional2Width && step.additional2Count > 0) {
+              byWidth.set(step.additional2Width, (byWidth.get(step.additional2Width) ?? 0) + step.additional2Count);
+            }
+          }
+          for (const [widthMm, count] of Array.from(byWidth.entries())) {
+            additionalSizes.push({ widthMm, count });
+          }
+        }
         await finishedGoods.materializeFromCompletion({
           orderNumber: order.orderNumber,
           materialId,
@@ -1051,6 +1086,7 @@ export function useProductionViewModel(): ProductionViewModel {
           targetRolls: target,
           destination: params.additionalDestination,
           perJumbo,
+          additionalSizes,
           sessionId: result.session.id,
           chainId: chainIdAtFinish ?? undefined,
         });

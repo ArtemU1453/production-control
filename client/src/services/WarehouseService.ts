@@ -174,14 +174,26 @@ function buildRolls(sessionId: string, result: CalcResult, additionalDestination
       destination: RollDestination.order,
     },
   ];
-  if (result.additional_width_mm && result.total_additional_rolls > 0) {
+  // Each additional size is tracked as its own roll record so sizes never mix.
+  if (result.additional_width_mm && result.total_additional_rolls_1 > 0) {
     rolls.push({
       id: makeId(),
       sessionId,
       kind: CuttingRollKind.additional,
       widthMm: result.additional_width_mm,
       lengthM: result.roll_length_m,
-      count: result.total_additional_rolls,
+      count: result.total_additional_rolls_1,
+      destination: additionalDestination,
+    });
+  }
+  if (result.additional_width_mm_2 && result.total_additional_rolls_2 > 0) {
+    rolls.push({
+      id: makeId(),
+      sessionId,
+      kind: CuttingRollKind.additional,
+      widthMm: result.additional_width_mm_2,
+      lengthM: result.roll_length_m,
+      count: result.total_additional_rolls_2,
       destination: additionalDestination,
     });
   }

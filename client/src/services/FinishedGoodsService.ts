@@ -41,6 +41,13 @@ export interface FinishedGoodsCompletionInput {
   destination: RollDestination;
   /** Good rolls per Jumbo, in production order. */
   perJumbo: FinishedGoodsJumboShare[];
+  /**
+   * Additional-size rolls to stock, aggregated per width. These are byproducts
+   * of the cut (not part of the main order), booked as their own finished units
+   * so sizes never mix. Empty when the additional rolls are delivered with the
+   * order rather than stocked.
+   */
+  additionalSizes?: { widthMm: number; count: number }[];
   sessionId?: string;
   /** Order chain id — also used as the idempotency key when present. */
   chainId?: string;
@@ -174,7 +181,8 @@ export function createFinishedGoodsService(
           units.push(share.jumboStockNumber);
         }
       }
-      if (units.length === 0) {
+      const additionalTotal = (input.additionalSizes ?? []).reduce((s, x) => s + Math.max(0, Math.round(x.count)), 0);
+      if (units.length === 0 && additionalTotal === 0) {
         return [];
       }
 
@@ -220,6 +228,39 @@ export function createFinishedGoodsService(
         };
         created.push(roll);
       });
+
+      // Additional-size rolls (byproducts of the cut) are stocked as their own
+      // finished units — one record per roll, per size, so sizes never mix.
+      for (const size of input.additionalSizes ?? []) {
+        const count = Math.max(0, Math.round(size.count));
+        for (let i = 0; i < count; i += 1) {
+          created.push({
+            id: makeId(),
+            number: rollNumber(input.producedAt, base + created.length + 1),
+            orderNumber: input.orderNumber,
+            materialId: input.materialId,
+            materialCode: input.materialCode,
+            widthMm: size.widthMm,
+            lengthM: input.lengthM,
+            count: 1,
+            producedAt: input.producedAt,
+            machine: input.machine,
+            operator: input.operator,
+            coating: input.coating,
+            sourceReason: "Доп. размер (излишек)",
+            jumboStockNumber: input.perJumbo[0]?.jumboStockNumber ?? "",
+            status: FinishedRollStatus.inStock,
+            sessionId: input.sessionId,
+            chainId: input.chainId,
+            history: [
+              historyEntry(FinishedRollStatus.inStock, "Изготовлен", input.producedAt, input.operator),
+              historyEntry(FinishedRollStatus.inStock, "Поступил на склад", now, input.operator),
+            ],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
 
       if (created.length === 0) {
         return [];

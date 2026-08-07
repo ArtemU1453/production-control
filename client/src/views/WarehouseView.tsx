@@ -173,7 +173,7 @@ export function WarehouseView() {
 
   return (
     <ScreenScaffold
-      title={strings.warehouse.title}
+      title={tab === "finished" ? "Склад готовых рулонов" : strings.warehouse.title}
       wide
       toolbar={
         tab === "jumbo" ? (
@@ -193,19 +193,21 @@ export function WarehouseView() {
       }
     >
       <div className="space-y-4">
-        {/* Склад Джамбов / Склад готовых рулонов */}
-        <div className="inline-flex gap-1 rounded-xl bg-muted/50 p-1">
+        {/* Вкладки раздела «Склад» (подчёркивание активной) */}
+        <div className="flex gap-6 border-b border-border/60">
           {([
+            { key: "finished", label: "Готовые рулоны" },
             { key: "jumbo", label: "Склад Джамбов" },
-            { key: "finished", label: "Склад готовых рулонов" },
           ] as const).map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               className={cn(
-                "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
-                tab === t.key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                "-mb-px border-b-2 px-1 pb-2 text-sm font-medium transition-colors",
+                tab === t.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {t.label}

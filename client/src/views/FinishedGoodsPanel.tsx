@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   Pencil,
@@ -81,6 +84,16 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("ru-RU");
 }
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.toLocaleDateString("ru-RU")} ${d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+/** OUT = красный слой, IN = синий слой (per the mockup). */
+const OUT_COLOR = "text-red-500 dark:text-red-400";
+const IN_COLOR = "text-blue-500 dark:text-blue-400";
 
 /** Segmented pill group used for the direction / status filters. */
 function Pills<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
@@ -281,14 +294,28 @@ export function FinishedGoodsPanel() {
       <SearchBar value={vm.query} onChange={vm.setQuery} placeholder="Ширина, намотка, материал, комментарий, № заказа, № партии" />
 
       {showFilters ? (
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="flex items-center gap-2">
             <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Направление</span>
-            <Pills value={vm.direction} onChange={vm.setDirection} options={[{ value: "all", label: "Все" }, { value: Coating.in, label: "IN" }, { value: Coating.out, label: "OUT" }]} />
+            <Select value={vm.direction} onValueChange={(v) => vm.setDirection(v as typeof vm.direction)}>
+              <SelectTrigger className="h-8 w-[130px] rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все</SelectItem>
+                <SelectItem value={Coating.in}>IN</SelectItem>
+                <SelectItem value={Coating.out}>OUT</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-2">
             <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Статус</span>
-            <Pills value={vm.status} onChange={vm.setStatus} options={STATUS_FILTERS} />
+            <Select value={vm.status} onValueChange={(v) => vm.setStatus(v as typeof vm.status)}>
+              <SelectTrigger className="h-8 w-[170px] rounded-xl"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_FILTERS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {vm.hasActiveFilters ? (
             <SecondaryButton icon={RotateCcw} onClick={vm.resetFilters}>Сбросить</SecondaryButton>
@@ -311,10 +338,15 @@ export function FinishedGoodsPanel() {
               <thead>
                 <tr className="bg-muted/40">
                   <th className={headCell}><Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} aria-label="Выбрать все" /></th>
-                  <th className={headCell}>Ширина</th>
-                  <th className={headCell}>Намотка</th>
-                  <th className={headCell}>OUT, шт</th>
-                  <th className={headCell}>IN, шт</th>
+                  <th className={headCell}>
+                    <button type="button" onClick={vm.toggleWidthSort} className="inline-flex items-center gap-1 hover:text-foreground">
+                      Ширина, мм
+                      {vm.widthSort === "asc" ? <ArrowUp className="h-3 w-3" /> : vm.widthSort === "desc" ? <ArrowDown className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                    </button>
+                  </th>
+                  <th className={headCell}>Намотка, м</th>
+                  <th className={cn(headCell, OUT_COLOR)}>OUT, шт</th>
+                  <th className={cn(headCell, IN_COLOR)}>IN, шт</th>
                   <th className={headCell}>Площадь, м²</th>
                   <th className={headCell}>Статус</th>
                   <th className={headCell}>Комментарий</th>
@@ -326,14 +358,14 @@ export function FinishedGoodsPanel() {
                 {vm.rows.map((row) => (
                   <tr key={row.key} className="border-t border-border/60 transition-colors hover:bg-muted/40">
                     <td className={cell}><Checkbox checked={selected.has(row.key)} onCheckedChange={() => toggle(row.key)} aria-label="Выбрать строку" /></td>
-                    <td className={cn(cell, "tabular-nums font-medium")}>{row.widthMm} мм</td>
-                    <td className={cn(cell, "tabular-nums")}>{row.lengthM} м</td>
-                    <td className={cn(cell, "tabular-nums")}>{row.outCount || "—"}</td>
-                    <td className={cn(cell, "tabular-nums")}>{row.inCount || "—"}</td>
+                    <td className={cn(cell, "tabular-nums font-medium underline decoration-dotted underline-offset-4")}>{row.widthMm}</td>
+                    <td className={cn(cell, "tabular-nums")}>{row.lengthM}</td>
+                    <td className={cn(cell, "tabular-nums font-semibold", OUT_COLOR)}>{row.outCount || "—"}</td>
+                    <td className={cn(cell, "tabular-nums font-semibold", IN_COLOR)}>{row.inCount || "—"}</td>
                     <td className={cn(cell, "tabular-nums")}>{row.areaM2}</td>
                     <td className={cell}><StatusBadge label={STATUS_LABEL[row.status]} tone={STATUS_TONE[row.status]} /></td>
                     <td className={cn(cell, "max-w-[220px] truncate text-muted-foreground")} title={row.comment}>{row.comment || "—"}</td>
-                    <td className={cn(cell, "tabular-nums text-muted-foreground")}>{formatDate(row.arrivalDate)}</td>
+                    <td className={cn(cell, "tabular-nums text-muted-foreground")}>{formatDateTime(row.arrivalDate)}</td>
                     <td className={cell}>
                       <div className="flex items-center gap-0.5">
                         <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground" aria-label="Редактировать" onClick={() => setEditRow(row)}>

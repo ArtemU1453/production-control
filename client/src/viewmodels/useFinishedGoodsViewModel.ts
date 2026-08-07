@@ -73,6 +73,11 @@ export function useFinishedGoodsViewModel() {
   const [status, setStatus] = useState<FinishedGoodsStatusFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(10);
+  const [widthSort, setWidthSort] = useState<"asc" | "desc" | null>(null);
+  const toggleWidthSort = useCallback(
+    () => setWidthSort((s) => (s === "asc" ? "desc" : s === "desc" ? null : "asc")),
+    [],
+  );
 
   const load = useCallback(async () => {
     const [rollList, materialList] = await Promise.all([finishedGoods.list(), materials.getAll()]);
@@ -163,10 +168,14 @@ export function useFinishedGoodsViewModel() {
       if (!row.comment && roll.comment) row.comment = roll.comment;
       if (roll.producedAt < row.arrivalDate) row.arrivalDate = roll.producedAt;
     }
-    return Array.from(groups.values())
-      .map((row) => ({ ...row, areaM2: round1(row.areaM2) }))
-      .sort((a, b) => b.arrivalDate.localeCompare(a.arrivalDate) || a.widthMm - b.widthMm);
-  }, [filteredRolls]);
+    const list = Array.from(groups.values()).map((row) => ({ ...row, areaM2: round1(row.areaM2) }));
+    if (widthSort) {
+      list.sort((a, b) => (widthSort === "asc" ? a.widthMm - b.widthMm : b.widthMm - a.widthMm) || b.arrivalDate.localeCompare(a.arrivalDate));
+    } else {
+      list.sort((a, b) => b.arrivalDate.localeCompare(a.arrivalDate) || a.widthMm - b.widthMm);
+    }
+    return list;
+  }, [filteredRolls, widthSort]);
 
   // Pagination (clamped so the page is always valid as filters change).
   const totalRows = rows.length;
@@ -244,6 +253,9 @@ export function useFinishedGoodsViewModel() {
     setPageSize,
     rangeStart,
     rangeEnd,
+    // sort
+    widthSort,
+    toggleWidthSort,
     // actions
     createManual,
     editComment,

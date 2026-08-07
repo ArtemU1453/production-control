@@ -20,6 +20,7 @@ export type {
   FinishedGoodsService,
   FinishedGoodsCompletionInput,
   FinishedGoodsJumboShare,
+  ManualFinishedRollInput,
 } from "./FinishedGoodsService";
 export { createReportBuilder } from "./ReportBuilder";
 export type {

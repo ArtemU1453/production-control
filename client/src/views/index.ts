@@ -4,6 +4,7 @@ export { ProductionView } from "./ProductionView";
 export { HistoryView } from "./HistoryView";
 export { WarehouseView } from "./WarehouseView";
 export { FinishedGoodsView } from "./FinishedGoodsView";
+export { FinishedGoodsPanel } from "./FinishedGoodsPanel";
 export { FinishedRollDetailView } from "./FinishedRollDetailView";
 export { FinishedRollLabelView } from "./FinishedRollLabelView";
 export { SettingsView } from "./SettingsView";

@@ -1,10 +1,10 @@
 import {
   FinishedRollStatus,
+  Machine,
   RollDestination,
   type Coating,
   type FinishedRoll,
   type FinishedRollHistoryEntry,
-  type Machine,
 } from "../models";
 import type { FinishedRollRepository } from "../repositories";
 import { nowIso } from "../extensions/date";
@@ -74,6 +74,24 @@ export interface FinishedGoodsService {
   relocate(id: string, location: string, operator?: string): Promise<FinishedRoll | undefined>;
   /** Edits the roll's comment (records an «Изменён» history entry). */
   updateComment(id: string, comment: string, operator?: string): Promise<FinishedRoll | undefined>;
+  /** Manually creates a finished-goods record (Добавить рулон). */
+  create(input: ManualFinishedRollInput): Promise<FinishedRoll>;
+  /** Deletes finished-goods records by id (used to remove an aggregated row). */
+  remove(ids: string[]): Promise<void>;
+}
+
+/** Payload for a manual finished-goods entry. */
+export interface ManualFinishedRollInput {
+  materialId: string;
+  materialCode: string;
+  widthMm: number;
+  lengthM: number;
+  count: number;
+  coating: Coating;
+  comment?: string;
+  /** Дата поступления (ISO); defaults to now. */
+  producedAt?: string;
+  operator?: string;
 }
 
 function pad(value: number, length: number): string {
@@ -296,6 +314,44 @@ export function createFinishedGoodsService(
       };
       await finishedRolls.save(updated);
       return updated;
+    },
+
+    async create(input) {
+      const now = nowIso();
+      const producedAt = input.producedAt || now;
+      const base = await nextSequenceBase();
+      const count = Math.max(1, Math.round(input.count));
+      const roll: FinishedRoll = {
+        id: makeId(),
+        number: rollNumber(producedAt, base + 1),
+        orderNumber: "",
+        materialId: input.materialId,
+        materialCode: input.materialCode,
+        widthMm: input.widthMm,
+        lengthM: input.lengthM,
+        count,
+        producedAt,
+        machine: Machine.machine1,
+        operator: input.operator ?? "",
+        coating: input.coating,
+        sourceReason: "Ручное добавление",
+        jumboStockNumber: "",
+        status: FinishedRollStatus.inStock,
+        comment: input.comment || "Ручное добавление",
+        history: [
+          { id: makeId(), at: producedAt, status: FinishedRollStatus.inStock, title: "Создан вручную", operator: input.operator || undefined },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await finishedRolls.save(roll);
+      return roll;
+    },
+
+    async remove(ids) {
+      for (const id of ids) {
+        await finishedRolls.delete(id);
+      }
     },
   };
 }

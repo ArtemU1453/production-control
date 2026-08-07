@@ -37,8 +37,11 @@ import {
   type WarehouseFilter,
   type WarehouseSortKey,
 } from "@/viewmodels";
+import { FinishedGoodsPanel } from "./FinishedGoodsPanel";
 
 type WarehouseVM = ReturnType<typeof useWarehouseViewModel>;
+
+type WarehouseTab = "jumbo" | "finished";
 
 const sortOptions: ReadonlyArray<SegmentOption<WarehouseSortKey>> = [
   { value: "arrivalDate", label: "По дате" },
@@ -158,6 +161,7 @@ function JumboCard({ vm, jumbo, material }: { vm: WarehouseVM; jumbo: Jumbo; mat
 
 export function WarehouseView() {
   const vm = useWarehouseViewModel();
+  const [tab, setTab] = useState<WarehouseTab>("jumbo");
 
   const filterOptions: ReadonlyArray<SegmentOption<WarehouseFilter>> = [
     { value: "all", label: "Все", badge: vm.counts.all },
@@ -172,53 +176,81 @@ export function WarehouseView() {
       title={strings.warehouse.title}
       wide
       toolbar={
-        <>
-          <Link href="/archive">
-            <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Архив">
-              <Archive className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/warehouse/receipt">
-            <Button variant="default" size="icon" className="rounded-xl" aria-label="Поступление сырья">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </Link>
-        </>
+        tab === "jumbo" ? (
+          <>
+            <Link href="/archive">
+              <Button variant="secondary" size="icon" className="rounded-xl" aria-label="Архив">
+                <Archive className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/warehouse/receipt">
+              <Button variant="default" size="icon" className="rounded-xl" aria-label="Поступление сырья">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </Link>
+          </>
+        ) : null
       }
     >
       <div className="space-y-4">
-        <SearchBar
-          value={vm.query}
-          onChange={vm.setQuery}
-          placeholder="Номер, код, материал, статус"
-        />
-        <SegmentedControl
-          options={filterOptions}
-          value={vm.filter}
-          onChange={vm.setFilter}
-          aria-label="Фильтр по статусу"
-        />
-        <SegmentedControl
-          options={sortOptions}
-          value={vm.sortKey}
-          onChange={vm.setSortKey}
-          aria-label="Сортировка"
-        />
+        {/* Склад Джамбов / Склад готовых рулонов */}
+        <div className="inline-flex gap-1 rounded-xl bg-muted/50 p-1">
+          {([
+            { key: "jumbo", label: "Склад Джамбов" },
+            { key: "finished", label: "Склад готовых рулонов" },
+          ] as const).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={cn(
+                "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
+                tab === t.key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {vm.loading ? (
-          <LoadingView />
-        ) : vm.jumbos.length === 0 ? (
-          <EmptyState
-            icon={icons.warehouse}
-            title={strings.warehouse.empty}
-            message={strings.warehouse.emptyHint}
-          />
+        {tab === "finished" ? (
+          <FinishedGoodsPanel />
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {vm.jumbos.map((jumbo) => (
-              <JumboCard key={jumbo.id} vm={vm} jumbo={jumbo} material={vm.materialsById.get(jumbo.materialId)} />
-            ))}
-          </div>
+          <>
+            <SearchBar
+              value={vm.query}
+              onChange={vm.setQuery}
+              placeholder="Номер, код, материал, статус"
+            />
+            <SegmentedControl
+              options={filterOptions}
+              value={vm.filter}
+              onChange={vm.setFilter}
+              aria-label="Фильтр по статусу"
+            />
+            <SegmentedControl
+              options={sortOptions}
+              value={vm.sortKey}
+              onChange={vm.setSortKey}
+              aria-label="Сортировка"
+            />
+
+            {vm.loading ? (
+              <LoadingView />
+            ) : vm.jumbos.length === 0 ? (
+              <EmptyState
+                icon={icons.warehouse}
+                title={strings.warehouse.empty}
+                message={strings.warehouse.emptyHint}
+              />
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {vm.jumbos.map((jumbo) => (
+                  <JumboCard key={jumbo.id} vm={vm} jumbo={jumbo} material={vm.materialsById.get(jumbo.materialId)} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </ScreenScaffold>

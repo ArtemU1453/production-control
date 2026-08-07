@@ -59,6 +59,8 @@ import {
   type Jumbo,
 } from "@/models";
 import { formatArea, formatMeters } from "@/extensions/number";
+import { formatLocalDate, formatLocalTime } from "@/extensions/date";
+import { useClock } from "@/hooks/useClock";
 import { useProductionViewModel, type ProductionLogEntry } from "@/viewmodels";
 
 type ProductionVM = ReturnType<typeof useProductionViewModel>;
@@ -544,6 +546,11 @@ function CompletionSummaryCard({ vm }: { vm: ProductionVM }) {
 export function ProductionMachineView({ machine }: { machine: Machine }) {
   const vm = useProductionViewModel(machine);
   const { toast } = useToast();
+  // Live current date/time for the header — synced to the operator's local
+  // computer clock, refreshed every second (see useClock). This is the current
+  // interface time, independent of the order's own timestamps and of every
+  // historical production-event timestamp, which never change.
+  const now = useClock();
   const locked = vm.locked;
   const plan = vm.plan;
   const insufficient = vm.planStatus === "insufficient";
@@ -659,10 +666,10 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                 )}
               </Field>
               <Field label="Дата">
-                <StaticValue>{vm.order.date}</StaticValue>
+                <StaticValue>{formatLocalDate(now)}</StaticValue>
               </Field>
               <Field label="Время">
-                <StaticValue>{vm.order.time}</StaticValue>
+                <StaticValue>{formatLocalTime(now)}</StaticValue>
               </Field>
               <Field label="Статус">
                 <div className="flex h-6 items-center">

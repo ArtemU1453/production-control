@@ -16,9 +16,14 @@ export const storageKeys = {
   notificationStates: "narezka.store.notificationStates",
   settingsHistory: "narezka.store.settingsHistory",
   settings: "narezka.store.settings",
-  /** In-progress production workflow, persisted so an active run survives tab
-   *  navigation and page reload (cleared on finish / cancel). */
+  /** In-progress production workflow for Станок №1, persisted so an active run
+   *  survives tab navigation and page reload (cleared on finish / cancel).
+   *  Keeps its historical key so machine №1 sessions saved before the two-machine
+   *  split are restored unchanged. */
   activeProduction: "narezka.store.activeProduction",
+  /** In-progress production workflow for Станок №2 — an independent run stored
+   *  under its own key so the two machines never share state. */
+  activeProductionMachine2: "narezka.store.activeProduction.machine2",
 } as const;
 
 export type StorageKey = (typeof storageKeys)[keyof typeof storageKeys];

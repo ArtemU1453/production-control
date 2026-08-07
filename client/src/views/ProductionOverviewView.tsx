@@ -46,6 +46,15 @@ function detailPath(machine: Machine): string {
   return `/production/${machine}`;
 }
 
+/** Operator-facing customer name for the order. The technical order number
+ *  (ORD-…) stays in the data (order.orderNumber) — it is surfaced only as a
+ *  tooltip / in «Детали», never as the primary field. Falls back to «Не указан»
+ *  for legacy orders saved without a customer. */
+function customerName(order: { customer: string }): string {
+  const name = order.customer?.trim();
+  return name && name.length > 0 ? name : "Не указан";
+}
+
 /** Uppercase machine-status meta per the mockup (В РАБОТЕ / ПАУЗА / ОЖИДАНИЕ /
  *  ЗАВЕРШЁН) with the shared green/amber colour code. */
 function statusMeta(phase: ProductionVM["phase"]): { label: string; dot: string; tone: string } {
@@ -155,9 +164,11 @@ function CompletedBody({ vm, machine }: { vm: ProductionVM; machine: Machine }) 
   }
   return (
     <div className="space-y-3">
-      <div className={cn(AppTypography.footnote, "text-muted-foreground")}>
-        Заказ № {s.orderNumber || "—"}
-        {s.customer ? ` · ${s.customer}` : ""}
+      <div className={cn(AppTypography.footnote, "font-medium")}>
+        {customerName(s)}
+        {s.orderNumber ? (
+          <span className="ml-1.5 font-normal text-muted-foreground">· Заказ № {s.orderNumber}</span>
+        ) : null}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Tile label="Заказ" value={`${s.targetRolls} шт.`} />
@@ -202,7 +213,9 @@ function ActiveBody({ vm, machine }: { vm: ProductionVM; machine: Machine }) {
     <div className="space-y-3">
       {/* Order / material / operator */}
       <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-        <Cell label="Заказ">{vm.order.orderNumber || "—"}</Cell>
+        <Cell label="Заказчик">
+          <span title={`Заказ № ${vm.order.orderNumber}`}>{customerName(vm.order)}</span>
+        </Cell>
         <Cell label="Материал">{vm.selectedMaterial ? vm.selectedMaterial.code : "—"}</Cell>
         <Cell label="Оператор">{vm.order.operator || "—"}</Cell>
         <Cell label="Джамбо">{vm.selectedJumbo ? `№ ${vm.selectedJumbo.stockNumber}` : "—"}</Cell>
@@ -353,7 +366,7 @@ function OrdersInWorkTable({ machines }: { machines: { vm: ProductionVM; machine
             <thead>
               <tr className={cn(AppTypography.caption2, "text-muted-foreground")}>
                 <th className="py-1.5 pr-3 font-medium">Станок</th>
-                <th className="py-1.5 pr-3 font-medium">Заказ</th>
+                <th className="py-1.5 pr-3 font-medium">Заказчик</th>
                 <th className="py-1.5 pr-3 font-medium">Материал</th>
                 <th className="py-1.5 pr-3 font-medium">Джамбо</th>
                 <th className="py-1.5 pr-3 font-medium">Кр. слой</th>
@@ -371,7 +384,9 @@ function OrdersInWorkTable({ machines }: { machines: { vm: ProductionVM; machine
                 return (
                   <tr key={machine} className="border-t border-card-border align-middle">
                     <td className="py-1.5 pr-3 font-medium">{machineTitle(machine)}</td>
-                    <td className="py-1.5 pr-3">{vm.order.orderNumber || "—"}</td>
+                    <td className="py-1.5 pr-3" title={`Заказ № ${vm.order.orderNumber}`}>
+                      {customerName(vm.order)}
+                    </td>
                     <td className="py-1.5 pr-3">{vm.selectedMaterial ? vm.selectedMaterial.code : "—"}</td>
                     <td className="py-1.5 pr-3">{vm.selectedJumbo ? `№ ${vm.selectedJumbo.stockNumber}` : "—"}</td>
                     <td className="py-1.5 pr-3">

@@ -63,6 +63,11 @@ import { useProductionViewModel, type ProductionLogEntry } from "@/viewmodels";
 
 type ProductionVM = ReturnType<typeof useProductionViewModel>;
 
+const additionalModeOptions: ReadonlyArray<SegmentOption<"auto" | "manual">> = [
+  { value: "auto", label: "Авто" },
+  { value: "manual", label: "Вручную" },
+];
+
 const destinationOptions: ReadonlyArray<SegmentOption<RollDestination>> = [
   { value: RollDestination.order, label: "В заказ" },
   { value: RollDestination.warehouse, label: "На склад" },
@@ -684,7 +689,11 @@ export function ProductionView() {
                   <span>Ширина <span className="font-medium text-foreground">{vm.params.rollWidthMm} мм</span></span>
                   <span>Длина <span className="font-medium text-foreground">{vm.params.rollLengthM} м</span></span>
                   <span>Кол-во <span className="font-medium text-foreground">{vm.params.orderRolls} шт.</span></span>
-                  <span>Доп. размер <span className="font-medium text-foreground">{vm.params.additionalWidthMm ? `${vm.params.additionalWidthMm} мм` : "авто"}</span></span>
+                  <span>Доп. размеры <span className="font-medium text-foreground">{
+                    vm.params.additionalAuto
+                      ? "авто"
+                      : [vm.params.additionalWidthMm, vm.params.additionalWidthMm2].filter(Boolean).map((w) => `${w} мм`).join(" + ") || "—"
+                  }</span></span>
                   <span>Назначение <span className="font-medium text-foreground">{vm.params.additionalDestination === RollDestination.order ? "в заказ" : "на склад"}</span></span>
                 </div>
               ) : (
@@ -701,10 +710,38 @@ export function ProductionView() {
                     <Label className="text-[11px]">Кол-во, шт</Label>
                     <Input type="number" value={vm.params.orderRolls || ""} onChange={(e) => vm.updateParam("orderRolls", Number(e.target.value))} className="rounded-2xl" />
                   </div>
-                  <div className="w-24 space-y-1">
-                    <Label className="text-[11px]">Доп. размер</Label>
-                    <Input type="number" step="0.1" value={vm.params.additionalWidthMm ?? ""} placeholder="Авто" onChange={(e) => vm.updateParam("additionalWidthMm", e.target.value === "" ? undefined : Number(e.target.value))} className="rounded-2xl" />
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Доп. размеры</Label>
+                    <SegmentedControl options={additionalModeOptions} value={vm.params.additionalAuto ? "auto" : "manual"} onChange={(v) => vm.updateParam("additionalAuto", v === "auto")} aria-label="Режим доп. размеров" />
                   </div>
+                  {!vm.params.additionalAuto ? (
+                    <>
+                      <div className="w-28 space-y-1">
+                        <Label className="text-[11px]">Доп. размер №1, мм</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={vm.params.additionalWidthMm ?? ""}
+                          placeholder="—"
+                          onChange={(e) => vm.updateParam("additionalWidthMm", e.target.value === "" ? undefined : Math.max(0, Math.round(Number(e.target.value))) || undefined)}
+                          className="rounded-2xl"
+                        />
+                      </div>
+                      <div className="w-28 space-y-1">
+                        <Label className="text-[11px]">Доп. размер №2, мм</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={vm.params.additionalWidthMm2 ?? ""}
+                          placeholder="—"
+                          onChange={(e) => vm.updateParam("additionalWidthMm2", e.target.value === "" ? undefined : Math.max(0, Math.round(Number(e.target.value))) || undefined)}
+                          className="rounded-2xl"
+                        />
+                      </div>
+                    </>
+                  ) : null}
                   <div className="space-y-1">
                     <Label className="text-[11px]">Назначение доп.</Label>
                     <SegmentedControl options={destinationOptions} value={vm.params.additionalDestination} onChange={(v) => vm.updateParam("additionalDestination", v)} aria-label="Назначение дополнительных рулонов" />

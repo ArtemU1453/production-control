@@ -41,6 +41,13 @@ export interface FinishedGoodsCompletionInput {
   destination: RollDestination;
   /** Good rolls per Jumbo, in production order. */
   perJumbo: FinishedGoodsJumboShare[];
+  /**
+   * Additional-size rolls to stock, aggregated per width. These are byproducts
+   * of the cut (not part of the main order), booked as their own finished units
+   * so sizes never mix. Empty when the additional rolls are delivered with the
+   * order rather than stocked.
+   */
+  additionalSizes?: { widthMm: number; count: number }[];
   sessionId?: string;
   /** Order chain id — also used as the idempotency key when present. */
   chainId?: string;
@@ -174,29 +181,29 @@ export function createFinishedGoodsService(
           units.push(share.jumboStockNumber);
         }
       }
-      if (units.length === 0) {
+      const additionalTotal = (input.additionalSizes ?? []).reduce((s, x) => s + Math.max(0, Math.round(x.count)), 0);
+      if (units.length === 0 && additionalTotal === 0) {
         return [];
       }
 
-      const allToStock = input.destination === RollDestination.warehouse;
+      // Only SURPLUS beyond the order reaches the finished-goods warehouse.
+      // The first `target` good rolls close the order and are delivered to the
+      // customer — they are NOT stocked. Only the surplus (goodProduced − target)
+      // is booked. Defects never reach here (perJumbo already excludes them).
+      const target = Math.max(0, Math.round(input.targetRolls));
       const now = nowIso();
       const base = await nextSequenceBase();
       const created: FinishedRoll[] = [];
 
       units.forEach((jumboStockNumber, index) => {
-        // With destination «В заказ» the first `targetRolls` close the order and
-        // the surplus goes to stock; «На склад» sends everything to stock.
-        const goesToOrder = !allToStock && index < input.targetRolls;
-        const status = goesToOrder ? FinishedRollStatus.inOrder : FinishedRollStatus.inStock;
-        const arrivalTitle = goesToOrder ? "Передан по заказу" : "Поступил на склад";
-        const sourceReason = goesToOrder
-          ? "По заказу"
-          : allToStock
-            ? "Производство на склад"
-            : "Излишек производства";
+        // Rolls that fulfil the order are delivered to the customer, not stocked.
+        if (index < target) {
+          return;
+        }
+        const sourceReason = "Излишек производства";
         const roll: FinishedRoll = {
           id: makeId(),
-          number: rollNumber(input.producedAt, base + index + 1),
+          number: rollNumber(input.producedAt, base + created.length + 1),
           orderNumber: input.orderNumber,
           materialId: input.materialId,
           materialCode: input.materialCode,
@@ -209,18 +216,55 @@ export function createFinishedGoodsService(
           coating: input.coating,
           sourceReason,
           jumboStockNumber,
-          status,
+          status: FinishedRollStatus.inStock,
           sessionId: input.sessionId,
           chainId: input.chainId,
           history: [
-            historyEntry(status, "Изготовлен", input.producedAt, input.operator),
-            historyEntry(status, arrivalTitle, now, input.operator),
+            historyEntry(FinishedRollStatus.inStock, "Изготовлен", input.producedAt, input.operator),
+            historyEntry(FinishedRollStatus.inStock, "Поступил на склад", now, input.operator),
           ],
           createdAt: now,
           updatedAt: now,
         };
         created.push(roll);
       });
+
+      // Additional-size rolls (byproducts of the cut) are stocked as their own
+      // finished units — one record per roll, per size, so sizes never mix.
+      for (const size of input.additionalSizes ?? []) {
+        const count = Math.max(0, Math.round(size.count));
+        for (let i = 0; i < count; i += 1) {
+          created.push({
+            id: makeId(),
+            number: rollNumber(input.producedAt, base + created.length + 1),
+            orderNumber: input.orderNumber,
+            materialId: input.materialId,
+            materialCode: input.materialCode,
+            widthMm: size.widthMm,
+            lengthM: input.lengthM,
+            count: 1,
+            producedAt: input.producedAt,
+            machine: input.machine,
+            operator: input.operator,
+            coating: input.coating,
+            sourceReason: "Доп. размер (излишек)",
+            jumboStockNumber: input.perJumbo[0]?.jumboStockNumber ?? "",
+            status: FinishedRollStatus.inStock,
+            sessionId: input.sessionId,
+            chainId: input.chainId,
+            history: [
+              historyEntry(FinishedRollStatus.inStock, "Изготовлен", input.producedAt, input.operator),
+              historyEntry(FinishedRollStatus.inStock, "Поступил на склад", now, input.operator),
+            ],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+
+      if (created.length === 0) {
+        return [];
+      }
 
       // Persist newest-first so the freshest order appears at the top.
       for (let i = created.length - 1; i >= 0; i -= 1) {

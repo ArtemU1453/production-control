@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Lightbulb } from "lucide-react";
 import {
   Form,
@@ -23,7 +23,6 @@ import {
   buildCuttingModel,
   CuttingVisualizer,
   InfoPanels,
-  JumboLengthGauge,
   KpiPanel,
   ResultTable,
   SessionHistory,
@@ -31,18 +30,19 @@ import {
   type StripeKind,
 } from "./calculator";
 
-/** Analytics charts are lazy-loaded so Recharts ships only once results exist. */
-const CuttingCharts = lazy(() => import("./calculator/CuttingCharts"));
-
 const INPUT_CLASS = "rounded-xl";
 
 /**
- * CalculatorView — the production cutting screen, rebuilt as a visualisation-led
- * operator console. It is a pure presentation layer over
- * {@link useCalculatorViewModel}: the live plan comes from the unchanged
- * Calculation Engine, and every panel here only *renders* that result. The
- * layout is fully responsive — a sticky input rail beside a central
- * visualisation on desktop, collapsing to a single vertical flow on mobile.
+ * CalculatorView — the operator's cutting-plan tool.
+ *
+ * A compact, workflow-first console: parameters on the left, and — once real
+ * inputs are entered — the cutting scheme, the key result cards and the results
+ * table on the right. It is a pure presentation layer over
+ * {@link useCalculatorViewModel}; the plan comes from the unchanged Calculation
+ * Engine and every panel here only *renders* that result. All inputs start empty
+ * (no demo values), so nothing is computed or shown until the operator fills the
+ * form. The analytics dashboard and the duplicate length gauge were removed to
+ * keep the screen a tool, not a dashboard.
  */
 export function CalculatorView() {
   const { form, plan, errorMsg, applyAdditionalWidth } = useCalculatorViewModel();
@@ -125,6 +125,16 @@ export function CalculatorView() {
       wide
     >
       <div className="space-y-4">
+        {/* Status + primary actions (Рассчитать / Сохранить / PDF / Очистить). */}
+        <InfoPanels
+          plan={plan}
+          errorMsg={errorMsg}
+          onCalculate={onCalculate}
+          onClear={onClear}
+          onSave={onSave}
+          onPdf={onPdf}
+        />
+
         <div className="grid gap-4 xl:grid-cols-12">
           {/* ── Input rail ─────────────────────────────────────────────── */}
           <aside
@@ -141,9 +151,16 @@ export function CalculatorView() {
                       name="materialWidthMm"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">Ширина, мм</FormLabel>
+                          <FormLabel className="text-xs">Ширина Джамбо, мм</FormLabel>
                           <FormControl>
-                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="numeric"
+                              type="number"
+                              className={INPUT_CLASS}
+                              placeholder="Введите ширину"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -156,7 +173,14 @@ export function CalculatorView() {
                         <FormItem>
                           <FormLabel className="text-xs">Намотка Джамба, м</FormLabel>
                           <FormControl>
-                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="numeric"
+                              type="number"
+                              className={INPUT_CLASS}
+                              placeholder="Введите намотку"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -171,7 +195,14 @@ export function CalculatorView() {
                       <FormItem>
                         <FormLabel className="text-xs">Заказ, шт</FormLabel>
                         <FormControl>
-                          <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                          <Input
+                            {...field}
+                            value={field.value ?? ""}
+                            inputMode="numeric"
+                            type="number"
+                            className={INPUT_CLASS}
+                            placeholder="Введите количество"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -187,7 +218,7 @@ export function CalculatorView() {
                       render={({ field }) => (
                         <FormItem>
                           <FormControl>
-                            <Input {...field} type="hidden" />
+                            <Input {...field} value={field.value ?? ""} type="hidden" />
                           </FormControl>
                         </FormItem>
                       )}
@@ -205,7 +236,15 @@ export function CalculatorView() {
                         <FormItem>
                           <FormLabel className="text-xs">Ширина, мм</FormLabel>
                           <FormControl>
-                            <Input {...field} inputMode="decimal" type="number" step="0.1" className={INPUT_CLASS} />
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="decimal"
+                              type="number"
+                              step="0.1"
+                              className={INPUT_CLASS}
+                              placeholder="Введите ширину"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -218,7 +257,14 @@ export function CalculatorView() {
                         <FormItem>
                           <FormLabel className="text-xs">Длина, м</FormLabel>
                           <FormControl>
-                            <Input {...field} inputMode="numeric" type="number" className={INPUT_CLASS} />
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="numeric"
+                              type="number"
+                              className={INPUT_CLASS}
+                              placeholder="Введите длину"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -252,88 +298,61 @@ export function CalculatorView() {
             </CardView>
           </aside>
 
-          {/* ── Main column: summary band, hero visualisation, KPI ──────── */}
-          <div className="order-2 min-w-0 space-y-4 xl:col-span-8">
-            <InfoPanels
-              values={values}
-              plan={plan}
-              model={model}
-              errorMsg={errorMsg}
-              onCalculate={onCalculate}
-              onClear={onClear}
-              onSave={onSave}
-              onPdf={onPdf}
-            />
-
-            <div ref={resultRef} className="scroll-mt-4 space-y-4">
-              {plan && model ? (
-                <>
-                  <CardView animate>
-                    <CuttingVisualizer
-                      model={model}
-                      activeKind={activeKind}
-                      onActiveKindChange={setActiveKind}
-                    />
-                    <Separator className="my-4" />
-                    <JumboLengthGauge plan={plan} />
-                    {recommended ? (
-                      <div className="mt-4 rounded-2xl border border-orange-200/50 bg-orange-50/50 p-3 dark:border-orange-800/30 dark:bg-orange-900/10">
-                        <div className="flex items-start gap-2">
-                          <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" aria-hidden />
-                          <div className={AppTypography.footnote}>
-                            <div className="font-semibold text-orange-700 dark:text-orange-400">
-                              Оптимизация отхода
-                            </div>
-                            <div className="mt-1 text-orange-600/80 dark:text-orange-400/80">
-                              Отход более 7%. Рекомендуемый доп. размер:{" "}
-                              <button
-                                type="button"
-                                className="cursor-pointer font-bold underline decoration-dotted"
-                                onClick={() => applyAdditionalWidth(recommended.width)}
-                              >
-                                {recommended.width} мм
-                              </button>{" "}
-                              ({recommended.count} шт.)
-                            </div>
+          {/* ── Main column: cutting scheme → key results → results table ── */}
+          <div ref={resultRef} className="order-2 min-w-0 scroll-mt-4 space-y-4 xl:col-span-8">
+            {plan && model ? (
+              <>
+                <CardView animate>
+                  <CuttingVisualizer
+                    model={model}
+                    activeKind={activeKind}
+                    onActiveKindChange={setActiveKind}
+                  />
+                  {recommended ? (
+                    <div className="mt-4 rounded-2xl border border-orange-200/50 bg-orange-50/50 p-3 dark:border-orange-800/30 dark:bg-orange-900/10">
+                      <div className="flex items-start gap-2">
+                        <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" aria-hidden />
+                        <div className={AppTypography.footnote}>
+                          <div className="font-semibold text-orange-700 dark:text-orange-400">
+                            Оптимизация отхода
+                          </div>
+                          <div className="mt-1 text-orange-600/80 dark:text-orange-400/80">
+                            Отход более 7%. Рекомендуемый доп. размер:{" "}
+                            <button
+                              type="button"
+                              className="cursor-pointer font-bold underline decoration-dotted"
+                              onClick={() => applyAdditionalWidth(recommended.width)}
+                            >
+                              {recommended.width} мм
+                            </button>{" "}
+                            ({recommended.count} шт.)
                           </div>
                         </div>
                       </div>
-                    ) : null}
-                  </CardView>
-
-                  <KpiPanel plan={plan} model={model} />
-                </>
-              ) : (
-                <CardView animate>
-                  <div className={cn(AppTypography.footnote, "py-8 text-center text-muted-foreground")}>
-                    {errorMsg ?? "Введите корректные параметры, чтобы увидеть визуализацию раскроя."}
-                  </div>
+                    </div>
+                  ) : null}
                 </CardView>
-              )}
-            </div>
+
+                <KpiPanel plan={plan} model={model} />
+
+                <CardView title="Таблица результатов" icon={icons.dashboard} animate>
+                  <ResultTable
+                    plan={plan}
+                    model={model}
+                    activeKind={activeKind}
+                    onActiveKindChange={setActiveKind}
+                  />
+                </CardView>
+              </>
+            ) : (
+              <CardView animate>
+                <div className={cn(AppTypography.footnote, "py-10 text-center text-muted-foreground")}>
+                  {errorMsg ?? "Введите параметры и выполните расчёт, чтобы увидеть схему раскроя и результаты."}
+                </div>
+              </CardView>
+            )}
           </div>
         </div>
-
-        {/* ── Details: results grid + analytics ──────────────────────── */}
-        {plan && model ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <CardView title="Таблица результатов" icon={icons.dashboard} animate>
-              <ResultTable
-                plan={plan}
-                model={model}
-                activeKind={activeKind}
-                onActiveKindChange={setActiveKind}
-              />
-            </CardView>
-            <CardView title="Аналитика" icon={icons.analytics} animate>
-              <Suspense
-                fallback={<div className="h-52 animate-pulse rounded-2xl bg-muted/40" aria-hidden />}
-              >
-                <CuttingCharts plan={plan} />
-              </Suspense>
-            </CardView>
-          </div>
-        ) : null}
 
         {/* ── Session history ────────────────────────────────────────── */}
         <CardView title="История расчётов" icon={icons.history} animate>

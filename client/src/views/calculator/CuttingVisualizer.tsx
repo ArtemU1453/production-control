@@ -1,14 +1,8 @@
 import { useMemo } from "react";
-import { Scissors } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMm } from "@/extensions/number";
 import { AppTypography } from "@/designsystem";
-import {
-  STRIPE_FILL,
-  STRIPE_LABEL_MIN_PERCENT,
-  type CuttingModel,
-  type StripeKind,
-} from "./cuttingModel";
+import type { CuttingModel, StripeKind } from "./cuttingModel";
 
 interface CuttingVisualizerProps {
   model: CuttingModel;
@@ -19,27 +13,23 @@ interface CuttingVisualizerProps {
 }
 
 const KIND_LABEL: Record<StripeKind, string> = {
-  main: "Основной ручей",
-  additional: "Доп. ручей",
-  waste: "Кромка (обрез)",
+  main: "Основная",
+  additional: "Доп.",
+  waste: "Отход",
 };
 
-/** Diagonal hatch overlay used to mark the trimmed (waste) edges. */
-const WASTE_HATCH =
-  "repeating-linear-gradient(45deg, hsl(var(--destructive-foreground) / 0.25) 0 3px, transparent 3px 7px)";
-
 /**
- * CuttingVisualizer — the hero cross-section ("вид сверху") of the Jumbo.
+ * CuttingVisualizer — a compact production indicator of the cutting layout.
  *
- * The single largest element on the screen: it shows, at a glance, how the web
- * is split across its width — trimmed edges, every main knife lane, an optional
- * additional lane — with knife markers between lanes and the width dimension
- * under each band. Bands are keyed to the results grid: hovering/focusing a band
- * highlights its row and vice-versa via `activeKind`.
+ * It shows the full Jumbo width as a dark, rounded card bounded by thin red trim
+ * lines (the waste edges), filled with one rounded chip per cut lane: light-grey
+ * for main lanes, blue for the additional lane. Each chip's width is proportional
+ * to its physical width where space allows; chips wrap into several rows on
+ * narrow screens instead of ever scrolling horizontally. A dynamic legend below
+ * names only the kinds actually present.
  *
- * Purely presentational — it renders the {@link CuttingModel} arrangement and
- * never computes production figures. On narrow screens the track keeps a
- * touch-sized minimum width and scrolls horizontally.
+ * Purely presentational — it renders the {@link CuttingModel} the engine already
+ * produced and computes no production figures.
  */
 export function CuttingVisualizer({
   model,
@@ -47,163 +37,154 @@ export function CuttingVisualizer({
   onActiveKindChange,
   className,
 }: CuttingVisualizerProps) {
-  const { stripes, materialWidthMm, knifeCount } = model;
+  const { stripes, groups, materialWidthMm, usefulWidthMm } = model;
 
-  // Keep every band at least touch-sized; when many lanes exist the track
-  // exceeds the viewport and scrolls instead of collapsing to slivers.
-  const minTrackWidth = useMemo(
-    () => Math.max(320, stripes.length * 44),
-    [stripes.length],
+  // Only the cut lanes become chips; the trimmed edges are drawn as the red
+  // side lines, not as chips.
+  const laneChips = useMemo(
+    () => stripes.filter((s) => s.kind !== "waste"),
+    [stripes],
   );
+  const hasWaste = groups.some((g) => g.id === "waste");
+  const mainGroup = groups.find((g) => g.id === "main") ?? null;
+  const additionalGroup = groups.find((g) => g.id === "additional") ?? null;
 
-  const ariaSummary = useMemo(() => {
-    const parts = model.groups.map((g) =>
-      g.id === "waste"
-        ? `кромка ${formatMm(g.widthMm)} с каждой стороны`
-        : `${g.perCycle}×${formatMm(g.widthMm)} ${g.id === "main" ? "основных" : "доп."}`,
-    );
-    return `Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${parts.join(", ")}. Ножей: ${knifeCount}.`;
-  }, [model.groups, materialWidthMm, knifeCount]);
+  // Width basis: a chip's share of the useful (cut) width, so the lanes fill the
+  // area between the trim lines. A floor keeps labels readable; when the floors
+  // no longer fit the row, chips wrap to the next line (no horizontal scroll).
+  const widthFor = (widthMm: number) =>
+    usefulWidthMm > 0 ? (widthMm / usefulWidthMm) * 100 : 100 / Math.max(1, laneChips.length);
+
+  const kindChipClass: Record<Exclude<StripeKind, "waste">, string> = {
+    main: "bg-slate-300 text-slate-900",
+    additional: "bg-primary text-primary-foreground",
+  };
+  const kindDotClass: Record<StripeKind, string> = {
+    main: "bg-slate-300",
+    additional: "bg-primary",
+    waste: "bg-destructive",
+  };
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className={cn(AppTypography.subheadline, "flex items-center gap-2")}>
-          <Scissors className="h-4 w-4 text-primary" aria-hidden />
-          Схема раскроя · вид сверху
-        </div>
-        <div className={cn(AppTypography.footnote, "flex items-center gap-3 text-muted-foreground")}>
-          <span>
-            Ширина: <span className="font-semibold text-foreground">{formatMm(materialWidthMm)}</span>
-          </span>
-          <span>
-            Ножей: <span className="font-semibold text-foreground">{knifeCount}</span>
-          </span>
+      {/* Header: title + total Jumbo width. */}
+      <div className="flex items-center justify-between gap-2">
+        <div className={cn(AppTypography.subheadline)}>Схема раскроя</div>
+        <div className={cn(AppTypography.footnote, "text-muted-foreground")}>
+          Общая: <span className="font-semibold text-foreground">{formatMm(materialWidthMm)}</span>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-card-border bg-muted/30 p-3">
-        <div style={{ minWidth: minTrackWidth }}>
-          {/* The web, viewed from above. */}
-          <div
-            className="relative flex h-40 w-full overflow-hidden rounded-xl bg-background/60 shadow-inner sm:h-52 lg:h-60"
-            role="img"
-            aria-label={ariaSummary}
-          >
-            {stripes.map((stripe, idx) => {
-              const isActive = activeKind === stripe.kind;
-              const dim = activeKind !== null && !isActive;
-              const showLabel = stripe.widthPercent >= STRIPE_LABEL_MIN_PERCENT;
-              const isCut = stripe.kind !== "waste";
-              // Alternate main-lane brightness so adjacent identical lanes read
-              // as separate rolls.
-              const shade = stripe.kind === "main" && stripe.ordinal % 2 === 0 ? "brightness-110" : "";
-              const showKnife = idx > 0 && (isCut || stripes[idx - 1].kind !== "waste");
+      {/* The web between its trimmed edges. */}
+      <div className="flex items-stretch gap-2 rounded-2xl border border-card-border bg-muted/20 p-3">
+        {hasWaste ? (
+          <span
+            aria-hidden
+            title="Отход (кромка)"
+            className="w-1 shrink-0 self-stretch rounded-full bg-destructive"
+          />
+        ) : null}
 
-              return (
-                <button
-                  key={stripe.id}
-                  type="button"
-                  title={`${KIND_LABEL[stripe.kind]} — ${formatMm(stripe.widthMm)}`}
-                  aria-label={`${KIND_LABEL[stripe.kind]}, ширина ${formatMm(stripe.widthMm)}`}
-                  aria-pressed={isActive}
-                  onMouseEnter={() => onActiveKindChange(stripe.kind)}
-                  onMouseLeave={() => onActiveKindChange(null)}
-                  onFocus={() => onActiveKindChange(stripe.kind)}
-                  onBlur={() => onActiveKindChange(null)}
-                  className={cn(
-                    "group relative flex h-full flex-col items-center justify-end outline-none transition-[opacity,transform] duration-200",
-                    "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                    dim && "opacity-40",
-                  )}
-                  style={{ width: `${stripe.widthPercent}%` }}
-                >
-                  {/* Knife marker between adjacent cut lanes. */}
-                  {showKnife ? (
-                    <span
-                      aria-hidden
-                      className="absolute inset-y-0 left-0 z-10 w-px -translate-x-1/2 bg-foreground/70"
-                    >
-                      <span className="absolute -top-0.5 left-1/2 flex h-3 w-3 -translate-x-1/2 items-center justify-center rounded-full bg-foreground text-background">
-                        <Scissors className="h-2 w-2" />
-                      </span>
-                    </span>
-                  ) : null}
-
-                  {/* The lane fill. */}
-                  <span
-                    className={cn(
-                      "flex h-full w-full flex-col items-center justify-center gap-0.5 border-x border-background/20 transition-transform duration-200",
-                      shade,
-                      isActive && "scale-[1.02]",
-                    )}
-                    style={{
-                      background: STRIPE_FILL[stripe.kind],
-                      backgroundImage: stripe.kind === "waste" ? WASTE_HATCH : undefined,
-                    }}
-                  >
-                    {showLabel ? (
-                      <span
-                        className={cn(
-                          "px-0.5 text-center text-[11px] font-semibold leading-none tracking-tight text-white drop-shadow-sm",
-                          stripe.kind === "waste" && "rotate-[-90deg] whitespace-nowrap text-[10px]",
-                        )}
-                      >
-                        {stripe.kind === "waste" ? "обрез" : formatMm(stripe.widthMm)}
-                      </span>
-                    ) : null}
-                    {showLabel && isCut ? (
-                      <span className="text-[9px] font-medium leading-none text-white/80">
-                        №{stripe.ordinal}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Width dimension axis. */}
-          <div className="mt-2 flex items-center gap-2 px-1" aria-hidden>
-            <span className="h-2 w-px bg-muted-foreground/60" />
-            <span className="h-px flex-1 bg-muted-foreground/40" />
-            <span className={cn(AppTypography.caption, "whitespace-nowrap text-muted-foreground")}>
-              {formatMm(materialWidthMm)}
-            </span>
-            <span className="h-px flex-1 bg-muted-foreground/40" />
-            <span className="h-2 w-px bg-muted-foreground/60" />
-          </div>
+        <div
+          className="flex flex-1 flex-wrap content-center items-stretch gap-1.5"
+          role="img"
+          aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос.`}
+        >
+          {laneChips.map((chip) => {
+            const kind = chip.kind as Exclude<StripeKind, "waste">;
+            const isActive = activeKind === kind;
+            const dim = activeKind !== null && !isActive;
+            return (
+              <div
+                key={chip.id}
+                onMouseEnter={() => onActiveKindChange(kind)}
+                onMouseLeave={() => onActiveKindChange(null)}
+                title={`${KIND_LABEL[kind]} — ${formatMm(chip.widthMm)}`}
+                style={{ width: `calc(${widthFor(chip.widthMm)}% - 6px)`, minWidth: 40 }}
+                className={cn(
+                  "flex h-14 flex-col items-center justify-center rounded-lg text-center leading-none transition-opacity",
+                  kindChipClass[kind],
+                  isActive && "ring-2 ring-ring",
+                  dim && "opacity-50",
+                )}
+              >
+                <span className="text-sm font-semibold tabular-nums">{chip.widthMm}</span>
+                <span className="mt-0.5 text-[10px] font-medium opacity-80">мм</span>
+              </div>
+            );
+          })}
         </div>
+
+        {hasWaste ? (
+          <span
+            aria-hidden
+            title="Отход (кромка)"
+            className="w-1 shrink-0 self-stretch rounded-full bg-destructive"
+          />
+        ) : null}
       </div>
 
-      {/* Legend. */}
+      {/* Dynamic legend — only the kinds actually present. */}
       <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-4 gap-y-1")}>
-        {(["main", "additional", "waste"] as const)
-          .filter((kind) => model.groups.some((g) => g.id === kind))
-          .map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onMouseEnter={() => onActiveKindChange(kind)}
-              onMouseLeave={() => onActiveKindChange(null)}
-              onFocus={() => onActiveKindChange(kind)}
-              onBlur={() => onActiveKindChange(null)}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-1 py-0.5 outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
-                activeKind !== null && activeKind !== kind && "opacity-40",
-              )}
-            >
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{
-                  background: STRIPE_FILL[kind],
-                  backgroundImage: kind === "waste" ? WASTE_HATCH : undefined,
-                }}
-              />
-              <span className="text-muted-foreground">{KIND_LABEL[kind]}</span>
-            </button>
-          ))}
+        {mainGroup ? (
+          <LegendItem
+            dotClass={kindDotClass.main}
+            label={`Основная (${formatMm(mainGroup.widthMm)})`}
+            dim={activeKind !== null && activeKind !== "main"}
+            onEnter={() => onActiveKindChange("main")}
+            onLeave={() => onActiveKindChange(null)}
+          />
+        ) : null}
+        {additionalGroup ? (
+          <LegendItem
+            dotClass={kindDotClass.additional}
+            label={`Доп. (${formatMm(additionalGroup.widthMm)})`}
+            dim={activeKind !== null && activeKind !== "additional"}
+            onEnter={() => onActiveKindChange("additional")}
+            onLeave={() => onActiveKindChange(null)}
+          />
+        ) : null}
+        {hasWaste ? (
+          <LegendItem
+            dotClass={kindDotClass.waste}
+            label="Отход"
+            dim={activeKind !== null && activeKind !== "waste"}
+            onEnter={() => onActiveKindChange("waste")}
+            onLeave={() => onActiveKindChange(null)}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function LegendItem({
+  dotClass,
+  label,
+  dim,
+  onEnter,
+  onLeave,
+}: {
+  dotClass: string;
+  label: string;
+  dim: boolean;
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onFocus={onEnter}
+      onBlur={onLeave}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-1 py-0.5 outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
+        dim && "opacity-50",
+      )}
+    >
+      <span className={cn("h-2.5 w-2.5 rounded-full", dotClass)} />
+      <span className="text-muted-foreground">{label}</span>
+    </button>
   );
 }

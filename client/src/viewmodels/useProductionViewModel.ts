@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServices } from "@/core/di/AppServices";
+import { storageKeys } from "@/storage/StorageKeys";
 import {
   DEFAULT_COATING,
   JumboStatus,
@@ -156,6 +157,30 @@ export interface OrderSummary {
   steps: ChainStep[];
 }
 
+/**
+ * Serializable snapshot of an in-progress production run. Persisted to the Store
+ * so an active session survives navigation between tabs and a full page reload.
+ * Only the raw workflow state is stored — derived values (plan, KPIs) are
+ * recomputed identically from the restored inputs.
+ */
+interface ActiveProductionSnapshot {
+  order: OrderInfo;
+  materialId: string;
+  selectedJumbo: Jumbo | null;
+  params: ProductionParams;
+  outcome: CompleteCalculationOutcome | null;
+  chainId: string | null;
+  chainSteps: ChainStep[];
+  producedMain: number;
+  orderTotalRolls: number | null;
+  chainJumboIds: string[];
+  orderSummary: OrderSummary | null;
+  phase: OrderPhase;
+  startedAt: string | null;
+  productionLog: ProductionLogEntry[];
+  busyMachines: Machine[];
+}
+
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -276,6 +301,8 @@ interface ProductionViewModel {
   finishing: boolean;
   /** Start a fresh order after one is completed. */
   newOrder: () => void;
+  /** Отменить производство: сбрасывает активную сессию и очищает её снимок. */
+  cancelProduction: () => void;
   /** In-session production journal (defects, scrap, stops, notes). */
   productionLog: ProductionLogEntry[];
   addDefect: (detail: DefectInput) => void;
@@ -321,8 +348,12 @@ interface ProductionViewModel {
  * scenario is extended, plus a `chainId` stamped on each session to link them.
  */
 export function useProductionViewModel(): ProductionViewModel {
-  const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions, finishedGoods } =
+  const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions, finishedGoods, store } =
     useServices();
+
+  // True once the mount-time rehydration has run. Persistence is suppressed
+  // until then, so restoring a saved session never races with an empty write.
+  const hydrated = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState<Jumbo[]>([]);
@@ -396,8 +427,35 @@ export function useProductionViewModel(): ProductionViewModel {
       if (!active) {
         return;
       }
-      setOrder((previous) => ({ ...previous, operator: current.operator }));
       await loadAvailable();
+      if (!active) {
+        return;
+      }
+      // Restore an in-progress run (survives tab navigation and page reload).
+      // Only running/paused sessions are persisted, so a restored snapshot always
+      // drops the operator straight back into the active run.
+      const snapshot = await store.read<ActiveProductionSnapshot>(storageKeys.activeProduction);
+      if (snapshot && (snapshot.phase === "running" || snapshot.phase === "paused")) {
+        setOrder(snapshot.order);
+        setMaterialIdState(snapshot.materialId);
+        setSelectedJumbo(snapshot.selectedJumbo);
+        setParams(snapshot.params);
+        setOutcome(snapshot.outcome);
+        setChainId(snapshot.chainId);
+        setChainSteps(snapshot.chainSteps);
+        setProducedMain(snapshot.producedMain);
+        setOrderTotalRolls(snapshot.orderTotalRolls);
+        setChainJumboIds(snapshot.chainJumboIds);
+        setOrderSummary(snapshot.orderSummary);
+        setStartedAt(snapshot.startedAt);
+        setProductionLog(snapshot.productionLog);
+        setBusyMachines(snapshot.busyMachines);
+        setPhase(snapshot.phase);
+      } else {
+        // Fresh screen: only seed the default operator from settings.
+        setOrder((previous) => ({ ...previous, operator: current.operator }));
+      }
+      hydrated.current = true;
       if (active) {
         setLoading(false);
       }
@@ -405,7 +463,55 @@ export function useProductionViewModel(): ProductionViewModel {
     return () => {
       active = false;
     };
-  }, [settings, loadAvailable]);
+  }, [settings, loadAvailable, store]);
+
+  // Persist the active run on every change so it survives navigation and reload.
+  // Only running/paused runs are stored; any other phase (setup / completed)
+  // clears the snapshot, so a finished or cancelled run never lingers.
+  useEffect(() => {
+    if (!hydrated.current) {
+      return;
+    }
+    if (phase === "running" || phase === "paused") {
+      const snapshot: ActiveProductionSnapshot = {
+        order,
+        materialId,
+        selectedJumbo,
+        params,
+        outcome,
+        chainId,
+        chainSteps,
+        producedMain,
+        orderTotalRolls,
+        chainJumboIds,
+        orderSummary,
+        phase,
+        startedAt,
+        productionLog,
+        busyMachines,
+      };
+      void store.write(storageKeys.activeProduction, snapshot);
+    } else {
+      void store.remove(storageKeys.activeProduction);
+    }
+  }, [
+    store,
+    phase,
+    order,
+    materialId,
+    selectedJumbo,
+    params,
+    outcome,
+    chainId,
+    chainSteps,
+    producedMain,
+    orderTotalRolls,
+    chainJumboIds,
+    orderSummary,
+    startedAt,
+    productionLog,
+    busyMachines,
+  ]);
 
   const updateOrder = useCallback(<K extends keyof OrderInfo>(key: K, value: OrderInfo[K]) => {
     setOrder((previous) => ({ ...previous, [key]: value }));
@@ -1009,6 +1115,29 @@ export function useProductionViewModel(): ProductionViewModel {
     reset();
   }, [reset]);
 
+  // Отменить производство: сбрасывает активную сессию без сохранения в историю,
+  // освобождает станок и возвращает экран в режим создания нового заказа.
+  // Снимок активной сессии очищается автоматически (фаза → setup).
+  const cancelProduction = useCallback(() => {
+    setBusyMachines((machines) => machines.filter((m) => m !== order.machine));
+    setPhase("setup");
+    setStartedAt(null);
+    setProductionLog([]);
+    setCompletionSummary(null);
+    setParams(emptyParams());
+    setMaterialIdState("");
+    setOrder((previous) => ({
+      ...previous,
+      date: todayIsoDate(),
+      time: currentTime(),
+      orderNumber: generateOrderNumber(),
+      customer: "",
+      coating: DEFAULT_COATING,
+      comment: "",
+    }));
+    reset();
+  }, [reset, order.machine]);
+
   return {
     loading,
     order,
@@ -1054,6 +1183,7 @@ export function useProductionViewModel(): ProductionViewModel {
     finishProduction,
     finishing,
     newOrder,
+    cancelProduction,
     productionLog,
     addDefect,
     addStop,

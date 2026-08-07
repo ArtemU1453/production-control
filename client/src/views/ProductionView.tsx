@@ -9,15 +9,18 @@ import {
   Play,
   PlayCircle,
   Repeat2,
+  XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -277,6 +280,35 @@ function JumboPicker({
 }
 
 /** «Добавить брак» — opens a form and only records on confirm. */
+/** Cancel confirmation — discards the active production session (no history). */
+function CancelDialog({ vm }: { vm: ProductionVM }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <SecondaryButton icon={XCircle} className="h-9 justify-start text-destructive hover:text-destructive">
+          Отменить производство
+        </SecondaryButton>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Отменить производство?</DialogTitle>
+        </DialogHeader>
+        <p className={cn(AppTypography.footnote, "text-muted-foreground")}>
+          Текущая незавершённая сессия будет удалена: форма, выбранный Джамбо, журнал и расчёты
+          очистятся, станок освободится. Действие необратимо.
+        </p>
+        <DialogFooter>
+          <SecondaryButton onClick={() => setOpen(false)}>Продолжить производство</SecondaryButton>
+          <Button variant="destructive" className="rounded-2xl" onClick={() => { vm.cancelProduction(); setOpen(false); }}>
+            Отменить производство
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -798,6 +830,7 @@ export function ProductionView() {
                           Текущего Джамбо недостаточно для завершения — смените Джамбо, чтобы продолжить заказ.
                         </p>
                       ) : null}
+                      <CancelDialog vm={vm} />
                     </>
                   ) : (
                     <>

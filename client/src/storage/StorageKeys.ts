@@ -16,6 +16,9 @@ export const storageKeys = {
   notificationStates: "narezka.store.notificationStates",
   settingsHistory: "narezka.store.settingsHistory",
   settings: "narezka.store.settings",
+  /** In-progress production workflow, persisted so an active run survives tab
+   *  navigation and page reload (cleared on finish / cancel). */
+  activeProduction: "narezka.store.activeProduction",
 } as const;
 
 export type StorageKey = (typeof storageKeys)[keyof typeof storageKeys];

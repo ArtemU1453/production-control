@@ -3,91 +3,63 @@ import { useServices } from "@/core/di/AppServices";
 import {
   Coating,
   FinishedRollStatus,
-  coatingTitle,
-  finishedRollStatusTitle,
-  machineTitle,
   type FinishedRoll,
   type Material,
 } from "@/models";
+import type { ManualFinishedRollInput } from "@/services";
 
 /** Status filter — a concrete status or "all". */
 export type FinishedGoodsStatusFilter = "all" | FinishedRollStatus;
-/** Coating filter — a concrete side or "all". */
-export type FinishedGoodsCoatingFilter = "all" | Coating;
+/** Coating (direction) filter. */
+export type FinishedGoodsDirectionFilter = "all" | Coating;
+/** Page size options for the table. */
+export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
-/** The set of column filters exposed by the finished-goods screen. An empty
- *  string means "no filter" for that dimension. */
-export interface FinishedGoodsFilters {
+/**
+ * One aggregated table row: identical rolls (same material + width + winding +
+ * status) collapsed into a single record, with IN and OUT counted separately.
+ */
+export interface FinishedGoodsRow {
+  key: string;
   materialId: string;
-  coating: FinishedGoodsCoatingFilter;
-  widthMm: string;
-  lengthM: string;
-  date: string;
-  orderNumber: string;
-  operator: string;
-  machine: string;
-}
-
-export const emptyFinishedGoodsFilters: FinishedGoodsFilters = {
-  materialId: "",
-  coating: "all",
-  widthMm: "",
-  lengthM: "",
-  date: "",
-  orderNumber: "",
-  operator: "",
-  machine: "",
-};
-
-/** Aggregate counters shown in the analytics strip. */
-export interface FinishedGoodsAnalytics {
-  total: number;
-  inOrder: number;
-  /** Свободные — на складе, доступны. */
-  free: number;
-  reserved: number;
-  shipped: number;
-  writtenOff: number;
-  totalLengthM: number;
-  totalAreaM2: number;
+  materialCode: string;
+  widthMm: number;
+  lengthM: number;
+  status: FinishedRollStatus;
   inCount: number;
   outCount: number;
-  byMaterial: { code: string; count: number }[];
-  byOrder: { orderNumber: string; count: number }[];
+  totalCount: number;
+  areaM2: number;
+  comment: string;
+  arrivalDate: string;
+  /** Ids of the underlying per-roll records (for edit / delete). */
+  rollIds: string[];
 }
 
-function isoDate(iso: string): string {
-  return iso.slice(0, 10);
+/** A material chip in the horizontal selector. */
+export interface MaterialChip {
+  materialId: string;
+  code: string;
+  count: number;
 }
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/** Resolves the material code for an id, preferring the code carried on the
- *  rolls (always present) and falling back to the material record. */
-function materialCodeFor(
-  id: string,
-  rolls: FinishedRoll[],
-  materialsById: Map<string, Material>,
-): string {
-  const fromRoll = rolls.find((roll) => roll.materialId === id)?.materialCode;
-  return fromRoll ?? materialsById.get(id)?.code ?? id;
-}
-
-function csvCell(value: string | number | undefined): string {
-  const text = value === undefined ? "" : String(value);
-  return /[",;\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+function rowArea(widthMm: number, lengthM: number, count: number): number {
+  return (widthMm / 1000) * lengthM * count;
 }
 
 /**
- * ViewModel for the finished-goods warehouse (Готовая продукция).
+ * ViewModel for the finished-goods warehouse (Склад готовых рулонов).
  *
- * Loads every finished roll, exposes quick search + column filters, derives the
- * analytics counters, and forwards the movement actions (reserve / release /
- * ship / write-off / relocate / comment) to the {@link FinishedGoodsService}.
- * Read-only over the production flow — it never creates rolls itself (arrival is
- * automatic on order completion).
+ * Presents an aggregated table over the per-roll {@link FinishedRoll} storage:
+ * rolls that share material + width + winding + status are collapsed into one
+ * row, with IN/OUT counted in separate columns and the area summed. Provides the
+ * material-chip selector, instant search, direction/status filters, pagination,
+ * and manual create / edit / delete. Rolls arrive automatically from production;
+ * this layer never changes the cutting or warehouse logic.
  */
 export function useFinishedGoodsViewModel() {
   const { finishedGoods, materials } = useServices();
@@ -96,8 +68,16 @@ export function useFinishedGoodsViewModel() {
   const [rolls, setRolls] = useState<FinishedRoll[]>([]);
   const [materialsById, setMaterialsById] = useState<Map<string, Material>>(new Map());
   const [query, setQuery] = useState("");
+  const [materialId, setMaterialId] = useState(""); // "" = все материалы
+  const [direction, setDirection] = useState<FinishedGoodsDirectionFilter>("all");
   const [status, setStatus] = useState<FinishedGoodsStatusFilter>("all");
-  const [filters, setFilters] = useState<FinishedGoodsFilters>(emptyFinishedGoodsFilters);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [widthSort, setWidthSort] = useState<"asc" | "desc" | null>(null);
+  const toggleWidthSort = useCallback(
+    () => setWidthSort((s) => (s === "asc" ? "desc" : s === "desc" ? null : "asc")),
+    [],
+  );
 
   const load = useCallback(async () => {
     const [rollList, materialList] = await Promise.all([finishedGoods.list(), materials.getAll()]);
@@ -109,77 +89,44 @@ export function useFinishedGoodsViewModel() {
     let active = true;
     void (async () => {
       await load();
-      if (active) {
-        setLoading(false);
-      }
+      if (active) setLoading(false);
     })();
     return () => {
       active = false;
     };
   }, [load]);
 
-  const setFilter = useCallback(<K extends keyof FinishedGoodsFilters>(key: K, value: FinishedGoodsFilters[K]) => {
-    setFilters((previous) => ({ ...previous, [key]: value }));
-  }, []);
-  const resetFilters = useCallback(() => {
-    setFilters(emptyFinishedGoodsFilters);
-    setStatus("all");
-    setQuery("");
-  }, []);
-
-  // Distinct option lists for the filter selects (derived from the data).
-  const options = useMemo(() => {
-    const widths = new Set<number>();
-    const lengths = new Set<number>();
-    const dates = new Set<string>();
-    const orders = new Set<string>();
-    const operators = new Set<string>();
-    const machines = new Set<string>();
-    const materialIds = new Set<string>();
+  // Material chips — total roll count per material (across the whole warehouse).
+  const materialChips = useMemo<MaterialChip[]>(() => {
+    const counts = new Map<string, { code: string; count: number }>();
     for (const roll of rolls) {
-      widths.add(roll.widthMm);
-      lengths.add(roll.lengthM);
-      dates.add(isoDate(roll.producedAt));
-      if (roll.orderNumber) orders.add(roll.orderNumber);
-      if (roll.operator) operators.add(roll.operator);
-      machines.add(roll.machine);
-      materialIds.add(roll.materialId);
+      const entry = counts.get(roll.materialId) ?? { code: roll.materialCode, count: 0 };
+      entry.count += roll.count;
+      counts.set(roll.materialId, entry);
     }
-    return {
-      widths: Array.from(widths).sort((a, b) => a - b),
-      lengths: Array.from(lengths).sort((a, b) => a - b),
-      dates: Array.from(dates).sort((a, b) => b.localeCompare(a)),
-      orders: Array.from(orders).sort((a, b) => b.localeCompare(a)),
-      operators: Array.from(operators).sort((a, b) => a.localeCompare(b)),
-      machines: Array.from(machines).sort(),
-      materials: Array.from(materialIds)
-        .map((id) => ({ id, code: materialCodeFor(id, rolls, materialsById) }))
-        .sort((a, b) => a.code.localeCompare(b.code)),
-    };
-  }, [rolls, materialsById]);
+    return Array.from(counts.entries())
+      .map(([id, { code, count }]) => ({ materialId: id, code, count }))
+      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+  }, [rolls]);
 
-  const filtered = useMemo(() => {
+  const totalRollCount = useMemo(() => rolls.reduce((sum, roll) => sum + roll.count, 0), [rolls]);
+
+  // Rolls passing the search / material / direction / status filters.
+  const filteredRolls = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rolls.filter((roll) => {
+      if (materialId && roll.materialId !== materialId) return false;
+      if (direction !== "all" && (roll.coating ?? Coating.out) !== direction) return false;
       if (status !== "all" && roll.status !== status) return false;
-      if (filters.materialId && roll.materialId !== filters.materialId) return false;
-      if (filters.coating !== "all" && (roll.coating ?? Coating.out) !== filters.coating) return false;
-      if (filters.widthMm && roll.widthMm !== Number(filters.widthMm)) return false;
-      if (filters.lengthM && roll.lengthM !== Number(filters.lengthM)) return false;
-      if (filters.date && isoDate(roll.producedAt) !== filters.date) return false;
-      if (filters.orderNumber && roll.orderNumber !== filters.orderNumber) return false;
-      if (filters.operator && roll.operator !== filters.operator) return false;
-      if (filters.machine && roll.machine !== filters.machine) return false;
       if (needle) {
         const haystack = [
-          roll.number,
-          roll.id,
-          roll.orderNumber,
+          String(roll.widthMm),
+          String(roll.lengthM),
           roll.materialCode,
-          roll.jumboStockNumber,
-          roll.operator,
-          roll.machine,
           roll.comment ?? "",
+          roll.orderNumber,
+          roll.number,
+          roll.jumboStockNumber,
         ]
           .join(" ")
           .toLowerCase();
@@ -187,141 +134,139 @@ export function useFinishedGoodsViewModel() {
       }
       return true;
     });
-  }, [rolls, status, filters, query]);
+  }, [rolls, query, materialId, direction, status]);
 
-  const analytics = useMemo<FinishedGoodsAnalytics>(() => {
-    const byMaterialMap = new Map<string, number>();
-    const byOrderMap = new Map<string, number>();
-    let inOrder = 0;
-    let free = 0;
-    let reserved = 0;
-    let shipped = 0;
-    let writtenOff = 0;
-    let totalLengthM = 0;
-    let totalAreaM2 = 0;
-    let inCount = 0;
-    let outCount = 0;
-    for (const roll of rolls) {
-      // Written-off rolls are excluded from physical stock totals.
-      if (roll.status !== FinishedRollStatus.writtenOff) {
-        totalLengthM += roll.lengthM * roll.count;
-        totalAreaM2 += (roll.widthMm / 1000) * roll.lengthM * roll.count;
+  // Aggregate the filtered rolls into table rows.
+  const rows = useMemo<FinishedGoodsRow[]>(() => {
+    const groups = new Map<string, FinishedGoodsRow>();
+    for (const roll of filteredRolls) {
+      const key = `${roll.materialId}|${roll.widthMm}|${roll.lengthM}|${roll.status}`;
+      let row = groups.get(key);
+      if (!row) {
+        row = {
+          key,
+          materialId: roll.materialId,
+          materialCode: roll.materialCode,
+          widthMm: roll.widthMm,
+          lengthM: roll.lengthM,
+          status: roll.status,
+          inCount: 0,
+          outCount: 0,
+          totalCount: 0,
+          areaM2: 0,
+          comment: roll.comment ?? "",
+          arrivalDate: roll.producedAt,
+          rollIds: [],
+        };
+        groups.set(key, row);
       }
-      if (roll.status === FinishedRollStatus.inOrder) inOrder += 1;
-      else if (roll.status === FinishedRollStatus.inStock) free += 1;
-      else if (roll.status === FinishedRollStatus.reserved) reserved += 1;
-      else if (roll.status === FinishedRollStatus.shipped) shipped += 1;
-      else if (roll.status === FinishedRollStatus.writtenOff) writtenOff += 1;
-      if ((roll.coating ?? Coating.out) === Coating.in) inCount += 1;
-      else outCount += 1;
-      byMaterialMap.set(roll.materialCode, (byMaterialMap.get(roll.materialCode) ?? 0) + 1);
-      if (roll.orderNumber) byOrderMap.set(roll.orderNumber, (byOrderMap.get(roll.orderNumber) ?? 0) + 1);
+      if ((roll.coating ?? Coating.out) === Coating.in) row.inCount += roll.count;
+      else row.outCount += roll.count;
+      row.totalCount += roll.count;
+      row.areaM2 += rowArea(roll.widthMm, roll.lengthM, roll.count);
+      row.rollIds.push(roll.id);
+      if (!row.comment && roll.comment) row.comment = roll.comment;
+      if (roll.producedAt < row.arrivalDate) row.arrivalDate = roll.producedAt;
     }
-    return {
-      total: rolls.length,
-      inOrder,
-      free,
-      reserved,
-      shipped,
-      writtenOff,
-      totalLengthM: round1(totalLengthM),
-      totalAreaM2: round1(totalAreaM2),
-      inCount,
-      outCount,
-      byMaterial: Array.from(byMaterialMap.entries())
-        .map(([code, count]) => ({ code, count }))
-        .sort((a, b) => b.count - a.count),
-      byOrder: Array.from(byOrderMap.entries())
-        .map(([orderNumber, count]) => ({ orderNumber, count }))
-        .sort((a, b) => b.count - a.count),
-    };
-  }, [rolls]);
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<FinishedGoodsStatusFilter, number> = {
-      all: rolls.length,
-      [FinishedRollStatus.inOrder]: 0,
-      [FinishedRollStatus.inStock]: 0,
-      [FinishedRollStatus.reserved]: 0,
-      [FinishedRollStatus.shipped]: 0,
-      [FinishedRollStatus.writtenOff]: 0,
-    };
-    for (const roll of rolls) {
-      counts[roll.status] += 1;
+    const list = Array.from(groups.values()).map((row) => ({ ...row, areaM2: round1(row.areaM2) }));
+    if (widthSort) {
+      list.sort((a, b) => (widthSort === "asc" ? a.widthMm - b.widthMm : b.widthMm - a.widthMm) || b.arrivalDate.localeCompare(a.arrivalDate));
+    } else {
+      list.sort((a, b) => b.arrivalDate.localeCompare(a.arrivalDate) || a.widthMm - b.widthMm);
     }
-    return counts;
-  }, [rolls]);
+    return list;
+  }, [filteredRolls, widthSort]);
 
-  const reserve = useCallback(async (id: string, operator?: string) => { await finishedGoods.reserve(id, operator); await load(); }, [finishedGoods, load]);
-  const releaseReservation = useCallback(async (id: string, operator?: string) => { await finishedGoods.releaseReservation(id, operator); await load(); }, [finishedGoods, load]);
-  const ship = useCallback(async (id: string, operator?: string) => { await finishedGoods.ship(id, operator); await load(); }, [finishedGoods, load]);
-  const writeOff = useCallback(async (id: string, operator?: string, note?: string) => { await finishedGoods.writeOff(id, operator, note); await load(); }, [finishedGoods, load]);
-  const relocate = useCallback(async (id: string, location: string, operator?: string) => { await finishedGoods.relocate(id, location, operator); await load(); }, [finishedGoods, load]);
-  const updateComment = useCallback(async (id: string, comment: string, operator?: string) => { await finishedGoods.updateComment(id, comment, operator); await load(); }, [finishedGoods, load]);
+  // Pagination (clamped so the page is always valid as filters change).
+  const totalRows = rows.length;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = useMemo(
+    () => rows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [rows, safePage, pageSize],
+  );
+  const rangeStart = totalRows === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const rangeEnd = Math.min(safePage * pageSize, totalRows);
 
-  /** Builds a CSV of the currently filtered rolls (used by the Export action). */
-  const buildCsv = useCallback(() => {
-    const header = [
-      "№ рулона", "Заказ", "Материал", "Слой", "Ширина, мм", "Длина, м", "Дата",
-      "Станок", "Оператор", "Джамбо", "Статус", "Место", "Комментарий",
-    ];
-    const lines = filtered.map((roll) =>
-      [
-        roll.number,
-        roll.orderNumber,
-        roll.materialCode,
-        roll.coating ? coatingTitle(roll.coating) : "",
-        roll.widthMm,
-        roll.lengthM,
-        isoDate(roll.producedAt),
-        machineTitle(roll.machine),
-        roll.operator,
-        roll.jumboStockNumber,
-        finishedRollStatusTitle(roll.status),
-        roll.storageLocation ?? "",
-        roll.comment ?? "",
-      ].map(csvCell).join(";"),
-    );
-    return [header.map(csvCell).join(";"), ...lines].join("\n");
-  }, [filtered]);
+  // Reset to the first page whenever the result set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [query, materialId, direction, status, pageSize]);
 
   const hasActiveFilters =
-    query.trim().length > 0 ||
-    status !== "all" ||
-    filters.coating !== "all" ||
-    Object.entries(filters).some(([key, value]) => key !== "coating" && value !== "");
+    query.trim().length > 0 || materialId !== "" || direction !== "all" || status !== "all";
+  const resetFilters = useCallback(() => {
+    setQuery("");
+    setMaterialId("");
+    setDirection("all");
+    setStatus("all");
+  }, []);
+
+  const createManual = useCallback(
+    async (input: ManualFinishedRollInput) => {
+      await finishedGoods.create(input);
+      await load();
+    },
+    [finishedGoods, load],
+  );
+  const editComment = useCallback(
+    async (rollIds: string[], comment: string) => {
+      for (const id of rollIds) {
+        await finishedGoods.updateComment(id, comment);
+      }
+      await load();
+    },
+    [finishedGoods, load],
+  );
+  const removeRow = useCallback(
+    async (rollIds: string[]) => {
+      await finishedGoods.remove(rollIds);
+      await load();
+    },
+    [finishedGoods, load],
+  );
 
   return {
     loading,
-    rolls: filtered,
-    totalCount: rolls.length,
+    // data
+    rows: pageRows,
+    totalRows,
+    totalRollCount,
+    materialChips,
     materialsById,
+    // search / filters
     query,
     setQuery,
+    materialId,
+    setMaterialId,
+    direction,
+    setDirection,
     status,
     setStatus,
-    statusCounts,
-    filters,
-    setFilter,
-    resetFilters,
     hasActiveFilters,
-    options,
-    analytics,
-    machineLabel: (machine: string) => machineTitle(machine as never),
-    reserve,
-    releaseReservation,
-    ship,
-    writeOff,
-    relocate,
-    updateComment,
-    buildCsv,
+    resetFilters,
+    // pagination
+    page: safePage,
+    pageCount,
+    pageSize,
+    setPage,
+    setPageSize,
+    rangeStart,
+    rangeEnd,
+    // sort
+    widthSort,
+    toggleWidthSort,
+    // actions
+    createManual,
+    editComment,
+    removeRow,
     reload: load,
   };
 }
 
 /**
  * ViewModel for a single finished roll's detail card. Loads the roll and its
- * history, and exposes the same movement actions as the list.
+ * history, and exposes the movement actions.
  */
 export function useFinishedRollViewModel(rollId: string) {
   const { finishedGoods } = useServices();
@@ -337,9 +282,7 @@ export function useFinishedRollViewModel(rollId: string) {
     let active = true;
     void (async () => {
       await load();
-      if (active) {
-        setLoading(false);
-      }
+      if (active) setLoading(false);
     })();
     return () => {
       active = false;

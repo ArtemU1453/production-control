@@ -38,11 +38,11 @@ export { useReceiptViewModel, type ReceiptItemDraft, type JumboDraftInput } from
 export {
   useFinishedGoodsViewModel,
   useFinishedRollViewModel,
-  emptyFinishedGoodsFilters,
+  PAGE_SIZE_OPTIONS,
   type FinishedGoodsStatusFilter,
-  type FinishedGoodsCoatingFilter,
-  type FinishedGoodsFilters,
-  type FinishedGoodsAnalytics,
+  type FinishedGoodsDirectionFilter,
+  type FinishedGoodsRow,
+  type MaterialChip,
 } from "./useFinishedGoodsViewModel";
 export { useJumboDetailViewModel, type JumboEdit } from "./useJumboDetailViewModel";
 export {

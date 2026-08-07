@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { animations } from "@/core/theme/theme";
+import { useTheme } from "@/core/theme/ThemeManager";
+import { Button } from "@/components/ui/button";
 
 interface ScreenScaffoldProps {
   title: string;
@@ -36,6 +39,7 @@ export function ScreenScaffold({
   className,
   wide = false,
 }: ScreenScaffoldProps) {
+  const { isDark, toggle } = useTheme();
   return (
     <div className={cn("mx-auto w-full", wide ? "max-w-[1680px]" : "max-w-[1120px]")}>
       <header className="pt-3">
@@ -46,7 +50,22 @@ export function ScreenScaffold({
               <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
             ) : null}
           </div>
-          {toolbar ? <div className="flex shrink-0 items-center gap-2">{toolbar}</div> : null}
+          {/* The single page-header action row: page-specific tools plus the
+              global theme toggle. This is the app's one title+actions row — the
+              former desktop TopBar (which duplicated this title) was removed. */}
+          <div className="flex shrink-0 items-center gap-2">
+            {toolbar}
+            <Button
+              data-app-chrome
+              variant="ghost"
+              size="icon"
+              className="rounded-xl"
+              onClick={toggle}
+              aria-label={isDark ? "Светлая тема" : "Тёмная тема"}
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
       </header>
 

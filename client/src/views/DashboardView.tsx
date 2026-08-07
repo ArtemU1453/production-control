@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { ChevronRight, Moon, Sun } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import {
   CardView,
   LoadingView,
@@ -8,10 +8,8 @@ import {
   StatusBadge,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ResponsiveGrid } from "@/app/layout";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/core/theme/ThemeManager";
 import { icons, type IconName } from "@/resources/icons";
 import { strings } from "@/resources/strings";
 import { formatArea, formatMeters } from "@/extensions/number";
@@ -76,24 +74,12 @@ function DashboardCard({ title, subtitle, icon, href, badge, tone = "primary" }:
 export function DashboardView() {
   const { loading, lastSession, sessionsCount, materialsCount, counts, totals, archiveTotals } =
     useDashboardViewModel();
-  const { isDark, toggle } = useTheme();
 
   return (
     <ScreenScaffold
       title={strings.dashboard.title}
       subtitle={strings.dashboard.subtitle}
       wide
-      toolbar={
-        <Button
-          variant="secondary"
-          size="icon"
-          className="rounded-xl"
-          onClick={toggle}
-          aria-label={isDark ? "Светлая тема" : "Тёмная тема"}
-        >
-          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
-      }
     >
       <div className="space-y-4">
         <ResponsiveGrid min={340} className="items-start">

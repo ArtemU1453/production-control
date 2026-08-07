@@ -14,7 +14,8 @@ import {
   JumboDetailView,
   MaterialEditorView,
   MaterialsView,
-  ProductionView,
+  ProductionMachineView,
+  ProductionOverviewView,
   ReceiptView,
   SettingsView,
   WarehouseView,
@@ -47,10 +48,15 @@ import {
   SearchView,
   SettingsHistoryView,
 } from "@/intelligence/views";
+import { Machine } from "@/models";
 import NotFound from "@/pages/not-found";
 
 function isReportKind(value: string): value is ReportKind {
   return (allReportKinds as readonly string[]).includes(value);
+}
+
+function isMachine(value: string): value is Machine {
+  return (Object.values(Machine) as string[]).includes(value);
 }
 
 /** Top-level route table. The tab bar is rendered outside the switch so it
@@ -63,7 +69,12 @@ function AppRouter() {
       <UpdateBanner />
       <Switch>
         <Route path="/" component={DashboardView} />
-        <Route path="/production" component={ProductionView} />
+        <Route path="/production" component={ProductionOverviewView} />
+        <Route path="/production/:machine">
+          {(params) =>
+            isMachine(params.machine) ? <ProductionMachineView machine={params.machine} /> : <NotFound />
+          }
+        </Route>
         <Route path="/calculator" component={CalculatorView} />
         <Route path="/history" component={HistoryView} />
 

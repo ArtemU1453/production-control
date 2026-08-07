@@ -1,6 +1,7 @@
 export { DashboardView } from "./DashboardView";
 export { CalculatorView } from "./CalculatorView";
-export { ProductionView } from "./ProductionView";
+export { ProductionMachineView } from "./ProductionView";
+export { ProductionOverviewView } from "./ProductionOverviewView";
 export { HistoryView } from "./HistoryView";
 export { WarehouseView } from "./WarehouseView";
 export { FinishedGoodsView } from "./FinishedGoodsView";

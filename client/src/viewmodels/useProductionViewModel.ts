@@ -363,9 +363,17 @@ interface ProductionViewModel {
  * logic and the warehouse service are reused verbatim; only the order-execution
  * scenario is extended, plus a `chainId` stamped on each session to link them.
  */
-export function useProductionViewModel(): ProductionViewModel {
+export function useProductionViewModel(machine: Machine = Machine.machine1): ProductionViewModel {
   const { calculation, jumbos, materials, warehouse, settings, admin, cuttingSessions, finishedGoods, store } =
     useServices();
+
+  // Each machine persists its active run under its own key, so Станок №1 and
+  // Станок №2 are fully independent processes — one machine's order, Jumbo,
+  // journal and statistics never touch the other's. Машина №1 keeps the
+  // historical key for backward compatibility with sessions saved before the
+  // two-machine split.
+  const snapshotKey =
+    machine === Machine.machine1 ? storageKeys.activeProduction : storageKeys.activeProductionMachine2;
 
   // True once the mount-time rehydration has run. Persistence is suppressed
   // until then, so restoring a saved session never races with an empty write.
@@ -383,7 +391,7 @@ export function useProductionViewModel(): ProductionViewModel {
     customer: "",
     orderNumber: generateOrderNumber(),
     operator: "",
-    machine: Machine.machine1,
+    machine,
     coating: DEFAULT_COATING,
     comment: "",
   });
@@ -450,9 +458,12 @@ export function useProductionViewModel(): ProductionViewModel {
       // Restore an in-progress run (survives tab navigation and page reload).
       // Only running/paused sessions are persisted, so a restored snapshot always
       // drops the operator straight back into the active run.
-      const snapshot = await store.read<ActiveProductionSnapshot>(storageKeys.activeProduction);
+      const snapshot = await store.read<ActiveProductionSnapshot>(snapshotKey);
       if (snapshot && (snapshot.phase === "running" || snapshot.phase === "paused")) {
-        setOrder(snapshot.order);
+        // Bind the restored run to this hook's machine — a snapshot is only ever
+        // written under its own machine's key, so this simply guarantees the
+        // machine field is authoritative even for legacy snapshots.
+        setOrder({ ...snapshot.order, machine });
         setMaterialIdState(snapshot.materialId);
         setSelectedJumbo(snapshot.selectedJumbo);
         setParams(snapshot.params);
@@ -479,7 +490,7 @@ export function useProductionViewModel(): ProductionViewModel {
     return () => {
       active = false;
     };
-  }, [settings, loadAvailable, store]);
+  }, [settings, loadAvailable, store, snapshotKey, machine]);
 
   // Persist the active run on every change so it survives navigation and reload.
   // Only running/paused runs are stored; any other phase (setup / completed)
@@ -506,12 +517,13 @@ export function useProductionViewModel(): ProductionViewModel {
         productionLog,
         busyMachines,
       };
-      void store.write(storageKeys.activeProduction, snapshot);
+      void store.write(snapshotKey, snapshot);
     } else {
-      void store.remove(storageKeys.activeProduction);
+      void store.remove(snapshotKey);
     }
   }, [
     store,
+    snapshotKey,
     phase,
     order,
     materialId,

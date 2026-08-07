@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronLeft,
   PackageSearch,
   Pause,
   Play,
@@ -54,7 +55,6 @@ import {
   coatingTitle,
   jumboStatusColorRole,
   jumboStatusTitle,
-  machineOrder,
   machineTitle,
   type Jumbo,
 } from "@/models";
@@ -78,11 +78,11 @@ const destinationOptions: ReadonlyArray<SegmentOption<RollDestination>> = [
 const PARTIAL_JUMBO_MESSAGE =
   "Текущего Джамбо хватит только на часть заказа. Будет автоматически создан следующий этап производства после полного использования текущего Джамбо. Продолжайте производство.";
 
-function timeOf(iso: string): string {
+export function timeOf(iso: string): string {
   return new Date(iso).toTimeString().slice(0, 5);
 }
 
-const LOG_LABEL: Record<ProductionLogEntry["kind"], string> = {
+export const LOG_LABEL: Record<ProductionLogEntry["kind"], string> = {
   defect: "Брак",
   tech: "Технический цикл",
   stop: "Остановка",
@@ -96,7 +96,7 @@ const LOG_LABEL: Record<ProductionLogEntry["kind"], string> = {
   finish: "Завершение",
 };
 
-function journalCount(entry: ProductionLogEntry): string {
+export function journalCount(entry: ProductionLogEntry): string {
   if (entry.kind === "defect") {
     return `${entry.count ?? 1} рул.${entry.widthMm ? ` (${entry.widthMm} мм)` : ""}`;
   }
@@ -106,13 +106,51 @@ function journalCount(entry: ProductionLogEntry): string {
   return "—";
 }
 
-function journalDescription(entry: ProductionLogEntry): string {
+export function journalDescription(entry: ProductionLogEntry): string {
   const parts = [entry.reason, entry.note].filter((p): p is string => Boolean(p && p.length));
   return parts.length ? parts.join(" · ") : "—";
 }
 
+/**
+ * Live production KPIs derived from a machine's ViewModel. Both the machine
+ * detail screen and the two-machine overview compute the same numbers from the
+ * same VM, so this keeps them in exact agreement (no divergence between views).
+ */
+export function deriveMachineStats(vm: ProductionVM) {
+  const plan = vm.plan;
+  // «Заказ» — целевое количество ГОДНЫХ рулонов.
+  const target = vm.orderTotalRolls ?? vm.params.orderRolls;
+  // Изготовлено = завершённые Джамбо цепочки + текущий расчёт.
+  const producedRolls = vm.producedMain + (plan && vm.planStatus !== "error" ? plan.total_main_rolls : 0);
+  // «Выполнено» / «Осталось» по заказу считаются по ГОДНОЙ продукции
+  // (изготовлено − брак): заказ закрывается только когда годных ≥ заказа.
+  const doneRolls = Math.max(0, producedRolls - vm.defectCount);
+  const remainingRolls = Math.max(0, target - doneRolls);
+  const remainderPct =
+    vm.selectedJumbo && vm.selectedJumbo.initialWindingM > 0
+      ? Math.round((vm.liveRemainderM / vm.selectedJumbo.initialWindingM) * 100)
+      : 0;
+  const yieldPercent =
+    plan && plan.total_area_m2 > 0 ? Math.round((plan.useful_area_m2 / plan.total_area_m2) * 100) : null;
+  const additionalToWarehouse =
+    plan && vm.params.additionalDestination === RollDestination.warehouse ? plan.total_additional_rolls : 0;
+  // Следующий Джамбо, зарезервированный для продолжения заказа (первый доступный).
+  const reservedNext = vm.eligibleForContinue[0] ?? null;
+  return {
+    plan,
+    target,
+    producedRolls,
+    doneRolls,
+    remainingRolls,
+    remainderPct,
+    yieldPercent,
+    additionalToWarehouse,
+    reservedNext,
+  };
+}
+
 /** Order-status badge with the mockup's colour code (green/yellow/red). */
-function OrderStatusBadge({ vm }: { vm: ProductionVM }) {
+export function OrderStatusBadge({ vm }: { vm: ProductionVM }) {
   const dot =
     vm.phase === "running"
       ? "bg-[hsl(142_71%_45%)]"
@@ -138,7 +176,7 @@ function OrderStatusBadge({ vm }: { vm: ProductionVM }) {
 }
 
 /** A small KPI tile for the results grid — all tiles share the same size. */
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+export function Tile({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
     <div className="rounded-lg border border-card-border bg-card/60 px-2.5 py-1.5">
       <div className={cn(AppTypography.caption, "truncate text-muted-foreground")}>{label}</div>
@@ -286,7 +324,7 @@ function JumboPicker({
 
 /** «Добавить брак» — opens a form and only records on confirm. */
 /** Cancel confirmation — discards the active production session (no history). */
-function CancelDialog({ vm }: { vm: ProductionVM }) {
+export function CancelDialog({ vm }: { vm: ProductionVM }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -314,7 +352,7 @@ function CancelDialog({ vm }: { vm: ProductionVM }) {
   );
 }
 
-function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
+export function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -380,7 +418,7 @@ function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean })
 
 /** «Подключить следующий Джамбо» — books the current Jumbo and continues the
  *  same order on the next one (no order is created, no defects carry over). */
-function NextJumboDialog({ vm, materialNameFor }: { vm: ProductionVM; materialNameFor: (jumbo: Jumbo) => string }) {
+export function NextJumboDialog({ vm, materialNameFor }: { vm: ProductionVM; materialNameFor: (jumbo: Jumbo) => string }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const none = vm.eligibleForContinue.length === 0;
@@ -495,8 +533,14 @@ function CompletionSummaryCard({ vm }: { vm: ProductionVM }) {
   );
 }
 
-export function ProductionView() {
-  const vm = useProductionViewModel();
+/**
+ * Machine detail screen — the full setup + run management surface for a single
+ * machine. Reached from the two-machine overview via «Детали ↗». Every piece of
+ * state is bound to the machine passed in, so Станок №1 and Станок №2 run as two
+ * completely independent processes.
+ */
+export function ProductionMachineView({ machine }: { machine: Machine }) {
+  const vm = useProductionViewModel(machine);
   const { toast } = useToast();
   const locked = vm.locked;
   const plan = vm.plan;
@@ -504,23 +548,15 @@ export function ProductionView() {
 
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
 
-  const target = vm.orderTotalRolls ?? vm.params.orderRolls;
-  // «Выполнено» / «Осталось» по заказу считаются по ГОДНОЙ продукции
-  // (изготовлено − брак): заказ закрывается только когда годных ≥ заказа.
-  const producedRolls = vm.producedMain + (plan && vm.planStatus !== "error" ? plan.total_main_rolls : 0);
-  const doneRolls = Math.max(0, producedRolls - vm.defectCount);
-  const remainingRolls = Math.max(0, target - doneRolls);
-  const remainderPct =
-    vm.selectedJumbo && vm.selectedJumbo.initialWindingM > 0
-      ? Math.round((vm.liveRemainderM / vm.selectedJumbo.initialWindingM) * 100)
-      : 0;
-  const yieldPercent =
-    plan && plan.total_area_m2 > 0 ? Math.round((plan.useful_area_m2 / plan.total_area_m2) * 100) : null;
-  // Дополнительные рулоны, направленные на склад (по текущему расчёту).
-  const additionalToWarehouse =
-    plan && vm.params.additionalDestination === RollDestination.warehouse ? plan.total_additional_rolls : 0;
-  // Следующий Джамбо, зарезервированный для продолжения заказа (первый доступный).
-  const reservedNext = vm.eligibleForContinue[0] ?? null;
+  const {
+    target,
+    doneRolls,
+    remainingRolls,
+    remainderPct,
+    yieldPercent,
+    additionalToWarehouse,
+    reservedNext,
+  } = deriveMachineStats(vm);
 
   // Single source of truth for the start button (vm.canStart) — this only
   // surfaces which required field is still missing.
@@ -546,7 +582,16 @@ export function ProductionView() {
   };
 
   return (
-    <ScreenScaffold title={strings.production.title} wide>
+    <ScreenScaffold
+      title={`${strings.production.title} · ${machineTitle(machine)}`}
+      subtitle="Независимый процесс станка — заказ, Джамбо, журнал и статистика"
+      toolbar={
+        <Link href="/production">
+          <SecondaryButton icon={ChevronLeft}>К обзору станков</SecondaryButton>
+        </Link>
+      }
+      wide
+    >
       {vm.loading ? (
         <LoadingView />
       ) : vm.phase === "completed" && vm.completionSummary ? (
@@ -582,22 +627,9 @@ export function ProductionView() {
                 )}
               </Field>
               <Field label="Станок">
-                {locked ? (
-                  <StaticValue>{machineTitle(vm.order.machine)}</StaticValue>
-                ) : (
-                  <Select value={vm.order.machine} onValueChange={(v) => vm.updateOrder("machine", v as Machine)}>
-                    <SelectTrigger className="rounded-2xl">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {machineOrder.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {machineTitle(m)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                {/* Станок фиксирован экраном — каждый станок ведёт независимый
+                    процесс, поэтому здесь он не переключается. */}
+                <StaticValue>{machineTitle(vm.order.machine)}</StaticValue>
               </Field>
               <Field label="Оператор">
                 {locked ? (

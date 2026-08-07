@@ -37,12 +37,19 @@ export const calculatorSchema = z
 
 export type CalculatorFormValues = z.infer<typeof calculatorSchema>;
 
-export const calculatorDefaults: CalculatorFormValues = {
-  materialWidthMm: 910,
-  usefulWidthMm: 890,
-  rollWidthMm: 104,
-  rollLengthM: 300,
-  bigRollLengthM: 10000,
-  orderRolls: 50,
+/**
+ * Blank defaults for the calculator form. Every operator-entered field starts
+ * empty — no demonstration/test values are pre-filled — so nothing is computed
+ * until the operator types real parameters (an empty value fails validation and
+ * yields no plan). `usefulWidthMm` is derived from the material width by the
+ * ViewModel. Also used by «Очистить» to return the form to this clean state.
+ */
+export const calculatorDefaults: Partial<CalculatorFormValues> = {
+  materialWidthMm: undefined,
+  usefulWidthMm: undefined,
+  rollWidthMm: undefined,
+  rollLengthM: undefined,
+  bigRollLengthM: undefined,
+  orderRolls: undefined,
   additionalWidthMm: undefined,
 };

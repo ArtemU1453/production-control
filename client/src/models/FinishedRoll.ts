@@ -17,6 +17,8 @@ export enum FinishedRollStatus {
   reserved = "reserved",
   /** Отгружен — shipped out; kept in history, never deleted. */
   shipped = "shipped",
+  /** Списан — written off (defect found later, damage); kept in history. */
+  writtenOff = "writtenOff",
 }
 
 const statusTitles: Record<FinishedRollStatus, string> = {
@@ -24,6 +26,7 @@ const statusTitles: Record<FinishedRollStatus, string> = {
   [FinishedRollStatus.inStock]: "На складе",
   [FinishedRollStatus.reserved]: "Зарезервирован",
   [FinishedRollStatus.shipped]: "Отгружен",
+  [FinishedRollStatus.writtenOff]: "Списан",
 };
 
 export function finishedRollStatusTitle(status: FinishedRollStatus): string {
@@ -35,6 +38,7 @@ const statusRoles: Record<FinishedRollStatus, StatusColorRole> = {
   [FinishedRollStatus.inStock]: "neutral",
   [FinishedRollStatus.reserved]: "warning",
   [FinishedRollStatus.shipped]: "muted",
+  [FinishedRollStatus.writtenOff]: "danger",
 };
 
 export function finishedRollStatusColorRole(status: FinishedRollStatus): StatusColorRole {
@@ -47,6 +51,7 @@ export const finishedRollStatusOrder: readonly FinishedRollStatus[] = [
   FinishedRollStatus.inStock,
   FinishedRollStatus.reserved,
   FinishedRollStatus.shipped,
+  FinishedRollStatus.writtenOff,
 ];
 
 /** One entry of a finished roll's movement history. */

@@ -68,6 +68,12 @@ export interface FinishedGoodsService {
   releaseReservation(id: string, operator?: string): Promise<FinishedRoll | undefined>;
   /** Ships a roll (→ Отгружен). The record stays in history. */
   ship(id: string, operator?: string): Promise<FinishedRoll | undefined>;
+  /** Writes a roll off (→ Списан). The record stays in history, never deleted. */
+  writeOff(id: string, operator?: string, note?: string): Promise<FinishedRoll | undefined>;
+  /** Moves a roll to a storage location (records a «Перемещён» history entry). */
+  relocate(id: string, location: string, operator?: string): Promise<FinishedRoll | undefined>;
+  /** Edits the roll's comment (records an «Изменён» history entry). */
+  updateComment(id: string, comment: string, operator?: string): Promise<FinishedRoll | undefined>;
 }
 
 function pad(value: number, length: number): string {
@@ -233,6 +239,63 @@ export function createFinishedGoodsService(
         operator,
         (roll) => roll.status !== FinishedRollStatus.shipped,
       );
+    },
+
+    async writeOff(id, operator, note) {
+      const roll = await finishedRolls.getById(id);
+      if (!roll || roll.status === FinishedRollStatus.writtenOff) {
+        return undefined;
+      }
+      const at = nowIso();
+      const updated: FinishedRoll = {
+        ...roll,
+        status: FinishedRollStatus.writtenOff,
+        updatedAt: at,
+        history: [
+          ...roll.history,
+          { id: makeId(), at, status: FinishedRollStatus.writtenOff, title: "Списан", operator: (operator || roll.operator) || undefined, note: note || undefined },
+        ],
+      };
+      await finishedRolls.save(updated);
+      return updated;
+    },
+
+    async relocate(id, location, operator) {
+      const roll = await finishedRolls.getById(id);
+      if (!roll) {
+        return undefined;
+      }
+      const at = nowIso();
+      const updated: FinishedRoll = {
+        ...roll,
+        storageLocation: location || undefined,
+        updatedAt: at,
+        history: [
+          ...roll.history,
+          { id: makeId(), at, status: roll.status, title: location ? `Перемещён → ${location}` : "Перемещён", operator: (operator || roll.operator) || undefined },
+        ],
+      };
+      await finishedRolls.save(updated);
+      return updated;
+    },
+
+    async updateComment(id, comment, operator) {
+      const roll = await finishedRolls.getById(id);
+      if (!roll) {
+        return undefined;
+      }
+      const at = nowIso();
+      const updated: FinishedRoll = {
+        ...roll,
+        comment: comment || undefined,
+        updatedAt: at,
+        history: [
+          ...roll.history,
+          { id: makeId(), at, status: roll.status, title: "Изменён комментарий", operator: (operator || roll.operator) || undefined },
+        ],
+      };
+      await finishedRolls.save(updated);
+      return updated;
     },
   };
 }

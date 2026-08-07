@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, PackageCheck, Lock, LockOpen } from "lucide-react";
+import { ArrowLeft, PackageCheck, Lock, LockOpen, Printer, Trash2 } from "lucide-react";
 import {
   CardView,
   InfoRow,
@@ -13,6 +14,14 @@ import {
   type TimelineItem,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AppTypography } from "@/designsystem";
 import {
@@ -37,6 +46,8 @@ function formatDateTime(iso: string): string {
  */
 export function FinishedRollDetailView({ rollId }: { rollId: string }) {
   const vm = useFinishedRollViewModel(rollId);
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const [writeOffNote, setWriteOffNote] = useState("");
 
   if (vm.loading) {
     return (
@@ -65,7 +76,11 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
   const role = finishedRollStatusColorRole(roll.status);
   const canReserve = roll.status === FinishedRollStatus.inStock || roll.status === FinishedRollStatus.inOrder;
   const canRelease = roll.status === FinishedRollStatus.reserved;
-  const canShip = roll.status !== FinishedRollStatus.shipped;
+  const canShip =
+    roll.status === FinishedRollStatus.inStock ||
+    roll.status === FinishedRollStatus.inOrder ||
+    roll.status === FinishedRollStatus.reserved;
+  const canWriteOff = roll.status !== FinishedRollStatus.writtenOff && roll.status !== FinishedRollStatus.shipped;
 
   const historyItems: TimelineItem[] = roll.history
     .slice()
@@ -130,6 +145,15 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
                 Отгрузить
               </PrimaryButton>
             ) : null}
+            <Link href={`/finished-goods/${roll.id}/label`}>
+              <SecondaryButton icon={Printer}>Печать этикетки</SecondaryButton>
+            </Link>
+            {canWriteOff ? (
+              <Button variant="destructive" className="rounded-2xl" onClick={() => setWriteOffOpen(true)}>
+                <Trash2 className="h-4 w-4" />
+                Списать
+              </Button>
+            ) : null}
           </div>
         </CardView>
 
@@ -144,6 +168,28 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
           </div>
         </CardView>
       </div>
+
+      <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Списать рулон {roll.number}?</DialogTitle>
+          </DialogHeader>
+          <p className={cn(AppTypography.footnote, "text-muted-foreground")}>
+            Рулон получит статус «Списан» и покинет свободный остаток, но останется в истории.
+          </p>
+          <Input value={writeOffNote} onChange={(e) => setWriteOffNote(e.target.value)} placeholder="Причина (необязательно)" className="rounded-2xl" />
+          <DialogFooter>
+            <SecondaryButton onClick={() => setWriteOffOpen(false)}>Отмена</SecondaryButton>
+            <Button
+              variant="destructive"
+              className="rounded-2xl"
+              onClick={() => { void vm.writeOff(roll.operator, writeOffNote.trim()); setWriteOffOpen(false); }}
+            >
+              Списать
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ScreenScaffold>
   );
 }

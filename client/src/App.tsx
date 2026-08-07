@@ -9,6 +9,7 @@ import {
   DashboardView,
   FinishedGoodsView,
   FinishedRollDetailView,
+  FinishedRollLabelView,
   HistoryView,
   JumboDetailView,
   MaterialEditorView,
@@ -78,6 +79,9 @@ function AppRouter() {
           {(params) => <JumboDetailView jumboId={params.id} />}
         </Route>
         <Route path="/finished-goods" component={FinishedGoodsView} />
+        <Route path="/finished-goods/:id/label">
+          {(params) => <FinishedRollLabelView rollId={params.id} />}
+        </Route>
         <Route path="/finished-goods/:id">
           {(params) => <FinishedRollDetailView rollId={params.id} />}
         </Route>

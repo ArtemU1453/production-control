@@ -40,6 +40,7 @@ export {
   useFinishedRollViewModel,
   emptyFinishedGoodsFilters,
   type FinishedGoodsStatusFilter,
+  type FinishedGoodsCoatingFilter,
   type FinishedGoodsFilters,
   type FinishedGoodsAnalytics,
 } from "./useFinishedGoodsViewModel";

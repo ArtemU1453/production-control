@@ -62,6 +62,7 @@ import { formatArea, formatMeters } from "@/extensions/number";
 import { formatLocalDate, formatLocalTime } from "@/extensions/date";
 import { useClock } from "@/hooks/useClock";
 import { useProductionViewModel, type ProductionLogEntry } from "@/viewmodels";
+import { CuttingVisualizer, buildCuttingModel, type StripeKind } from "./calculator";
 
 type ProductionVM = ReturnType<typeof useProductionViewModel>;
 
@@ -551,6 +552,8 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
   // interface time, independent of the order's own timestamps and of every
   // historical production-event timestamp, which never change.
   const now = useClock();
+  // Hover-highlight state for the cutting scheme (kind ↔ chips/legend).
+  const [schemeKind, setSchemeKind] = useState<StripeKind | null>(null);
   const locked = vm.locked;
   const plan = vm.plan;
   const insufficient = vm.planStatus === "insufficient";
@@ -832,6 +835,17 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                   <Tile label="Использовано" value={plan ? formatMeters(plan.used_length_m) : "—"} />
                 </div>
               </CardView>
+
+              {/* Cutting scheme — the live raskroy for the current plan. */}
+              {plan ? (
+                <CardView className="p-3">
+                  <CuttingVisualizer
+                    model={buildCuttingModel(plan)}
+                    activeKind={schemeKind}
+                    onActiveKindChange={setSchemeKind}
+                  />
+                </CardView>
+              ) : null}
 
               {/* Journal — the main working element of the screen */}
               <CardView title="Журнал операций" icon={icons.gauge} className="p-3">

@@ -2,15 +2,16 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { surfaces } from "@/core/theme/theme";
 import { Sidebar } from "./Sidebar";
-import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 
 /**
  * AppLayout — the single application shell every screen renders inside.
  *
  * One responsive frame replaces per-screen shells:
- *  • Desktop (`lg`+): a fixed left {@link Sidebar} + sticky {@link TopBar}; the
- *    content column is offset by the sidebar width and there is NO bottom nav.
+ *  • Desktop (`lg`+): a fixed left {@link Sidebar}; the content column is offset
+ *    by the sidebar width and there is NO bottom nav. Each screen renders its own
+ *    title + actions row (with the theme toggle) via {@link ScreenScaffold}, so
+ *    there is no separate top bar duplicating the section name.
  *  • Mobile / tablet (`< lg`): a fixed {@link BottomNav}; the content column
  *    reserves matching bottom padding so nothing is ever hidden behind it.
  *
@@ -29,7 +30,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <Sidebar />
 
       <div className="lg:pl-56">
-        <TopBar />
         <main className="safe-x content-pad-t content-pad-b mx-auto w-full">{children}</main>
       </div>
 

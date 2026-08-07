@@ -494,9 +494,11 @@ function CompletionSummaryCard({ vm }: { vm: ProductionVM }) {
       headerTrailing={<StatusBadge label={`Джамбо: ${s.jumbosUsed}`} tone="neutral" />}
     >
       <div className="space-y-3">
-        <div className={cn(AppTypography.footnote, "text-muted-foreground")}>
-          Заказ № {s.orderNumber || "—"}
-          {s.customer ? ` · ${s.customer}` : ""}
+        <div className={cn(AppTypography.footnote, "font-medium")}>
+          {s.customer.trim() ? s.customer : "Не указан"}
+          {s.orderNumber ? (
+            <span className="ml-1.5 font-normal text-muted-foreground">· Заказ № {s.orderNumber}</span>
+          ) : null}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Tile label="Заказ" value={`${s.targetRolls} шт.`} />

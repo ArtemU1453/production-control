@@ -37,7 +37,7 @@ export function CuttingVisualizer({
   onActiveKindChange,
   className,
 }: CuttingVisualizerProps) {
-  const { stripes, groups, materialWidthMm, usefulWidthMm } = model;
+  const { stripes, groups, materialWidthMm } = model;
 
   // Only the cut lanes become chips; the trimmed edges are drawn as the red
   // side lines, not as chips.
@@ -49,11 +49,39 @@ export function CuttingVisualizer({
   const mainGroup = groups.find((g) => g.id === "main") ?? null;
   const additionalGroup = groups.find((g) => g.id === "additional") ?? null;
 
-  // Width basis: a chip's share of the useful (cut) width, so the lanes fill the
-  // area between the trim lines. A floor keeps labels readable; when the floors
-  // no longer fit the row, chips wrap to the next line (no horizontal scroll).
-  const widthFor = (widthMm: number) =>
-    usefulWidthMm > 0 ? (widthMm / usefulWidthMm) * 100 : 100 / Math.max(1, laneChips.length);
+  // Two-row staggered ("brick") layout. Lanes are split as evenly as possible
+  // between exactly two rows (counts differ by ≤ 1); the second row is shifted
+  // right by half a lane so rolls sit in a checkerboard, never one above another.
+  // A single global scale (% of container per mm) keeps every chip's width
+  // proportional to its real size and guarantees the widest row — including the
+  // stagger offset and inter-chip gaps — never exceeds the container (so there is
+  // no wrap, no third row, and no horizontal scroll; chips shrink on narrow
+  // screens instead). Nothing here touches the cutting math — only placement.
+  const layout = useMemo(() => {
+    const items = laneChips;
+    const n = items.length;
+    if (n === 0) {
+      return null;
+    }
+    const half = Math.ceil(n / 2);
+    const row1 = items.slice(0, half);
+    const row2 = items.slice(half);
+    const firstWidthMm = items[0].widthMm;
+    const gapUnitMm = firstWidthMm * 0.14; // inter-chip gap ≈ 14% of a lane
+    const offsetMm = row2.length > 0 ? firstWidthMm / 2 : 0; // stagger ≈ half a lane
+    const sumMm = (arr: typeof items) => arr.reduce((sum, chip) => sum + chip.widthMm, 0);
+    const row1Units = sumMm(row1) + gapUnitMm * Math.max(0, row1.length - 1);
+    const row2Units = offsetMm + sumMm(row2) + gapUnitMm * Math.max(0, row2.length - 1);
+    const constrained = Math.max(row1Units, row2Units, 1);
+    const scale = 96 / constrained; // % per mm; widest row ≤ 96% of the container
+    return {
+      row1,
+      row2,
+      scale,
+      gapPct: gapUnitMm * scale,
+      offsetPct: offsetMm * scale,
+    };
+  }, [laneChips]);
 
   const kindChipClass: Record<Exclude<StripeKind, "waste">, string> = {
     main: "bg-slate-300 text-slate-900",
@@ -86,33 +114,48 @@ export function CuttingVisualizer({
         ) : null}
 
         <div
-          className="flex flex-1 flex-wrap content-center items-stretch gap-1.5"
+          className="min-w-0 flex-1 space-y-1.5"
           role="img"
-          aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос.`}
+          aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос в два ряда.`}
         >
-          {laneChips.map((chip) => {
-            const kind = chip.kind as Exclude<StripeKind, "waste">;
-            const isActive = activeKind === kind;
-            const dim = activeKind !== null && !isActive;
-            return (
-              <div
-                key={chip.id}
-                onMouseEnter={() => onActiveKindChange(kind)}
-                onMouseLeave={() => onActiveKindChange(null)}
-                title={`${KIND_LABEL[kind]} — ${formatMm(chip.widthMm)}`}
-                style={{ width: `calc(${widthFor(chip.widthMm)}% - 6px)`, minWidth: 40 }}
-                className={cn(
-                  "flex h-14 flex-col items-center justify-center rounded-lg text-center leading-none transition-opacity",
-                  kindChipClass[kind],
-                  isActive && "ring-2 ring-ring",
-                  dim && "opacity-50",
-                )}
-              >
-                <span className="text-sm font-semibold tabular-nums">{chip.widthMm}</span>
-                <span className="mt-0.5 text-[10px] font-medium opacity-80">мм</span>
-              </div>
-            );
-          })}
+          {layout
+            ? [layout.row1, layout.row2].map((rowItems, rowIndex) =>
+                rowItems.length === 0 ? null : (
+                  <div key={rowIndex} className="flex flex-nowrap items-stretch">
+                    {rowItems.map((chip, idx) => {
+                      const kind = chip.kind as Exclude<StripeKind, "waste">;
+                      const isActive = activeKind === kind;
+                      const dim = activeKind !== null && !isActive;
+                      // First chip of row 2 carries the stagger offset; every
+                      // other chip carries the inter-chip gap as a left margin.
+                      const marginLeftPct =
+                        idx === 0 ? (rowIndex === 1 ? layout.offsetPct : 0) : layout.gapPct;
+                      return (
+                        <div
+                          key={chip.id}
+                          onMouseEnter={() => onActiveKindChange(kind)}
+                          onMouseLeave={() => onActiveKindChange(null)}
+                          title={`${KIND_LABEL[kind]} — ${formatMm(chip.widthMm)}`}
+                          style={{
+                            width: `${chip.widthMm * layout.scale}%`,
+                            marginLeft: `${marginLeftPct}%`,
+                          }}
+                          className={cn(
+                            "flex h-14 min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg text-center leading-none transition-opacity",
+                            kindChipClass[kind],
+                            isActive && "ring-2 ring-ring",
+                            dim && "opacity-50",
+                          )}
+                        >
+                          <span className="text-sm font-semibold tabular-nums">{chip.widthMm}</span>
+                          <span className="mt-0.5 text-[10px] font-medium opacity-80">мм</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ),
+              )
+            : null}
         </div>
 
         {hasWaste ? (

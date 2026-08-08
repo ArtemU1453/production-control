@@ -836,13 +836,14 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                 </div>
               </CardView>
 
-              {/* Cutting scheme — the live raskroy for the current plan. */}
+              {/* Cutting scheme — the live raskroy for the current plan (compact). */}
               {plan ? (
                 <CardView className="p-3">
                   <CuttingVisualizer
                     model={buildCuttingModel(plan)}
                     activeKind={schemeKind}
                     onActiveKindChange={setSchemeKind}
+                    compact
                   />
                 </CardView>
               ) : null}

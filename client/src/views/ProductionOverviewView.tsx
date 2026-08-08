@@ -241,12 +241,13 @@ function ActiveBody({ vm, machine }: { vm: ProductionVM; machine: Machine }) {
         </div>
       </div>
 
-      {/* Cutting scheme — the live raskroy for this machine's plan. */}
+      {/* Cutting scheme — the live raskroy for this machine's plan (compact). */}
       {plan ? (
         <CuttingVisualizer
           model={buildCuttingModel(plan)}
           activeKind={schemeKind}
           onActiveKindChange={setSchemeKind}
+          compact
         />
       ) : null}
 

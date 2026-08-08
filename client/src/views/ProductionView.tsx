@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { forwardRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
   Check,
   CheckCircle2,
   ChevronLeft,
+  Info,
   PackageSearch,
   Pause,
   Play,
@@ -190,6 +191,70 @@ export function Tile({ label, value, tone }: { label: string; value: string; ton
   );
 }
 
+/**
+ * OpButton — a compact, semantically-coloured operation button for the machine
+ * «Операции» panel (colour encodes the action's meaning per the spec). Forwards
+ * its ref and props so it can be used as a Radix `DialogTrigger asChild` child.
+ */
+interface OpButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  icon: LucideIcon;
+  /** Tailwind bg + hover classes, e.g. "bg-[#22C55E] hover:bg-[#16A34A]". */
+  color: string;
+  loading?: boolean;
+}
+const OpButton = forwardRef<HTMLButtonElement, OpButtonProps>(function OpButton(
+  { icon: Icon, color, loading, children, className, disabled, ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled || loading}
+      {...props}
+      className={cn(
+        "flex h-11 w-full items-center justify-center gap-2 rounded-[10px] px-3.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        color,
+        className,
+      )}
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+      {children}
+    </button>
+  );
+});
+
+/** A compact result tile for the roll counts, with a size chip (main = grey,
+ *  additional = blue) below the count. */
+function RollResultTile({
+  label,
+  count,
+  widthMm,
+  tone,
+}: {
+  label: string;
+  count: number;
+  widthMm: number | null;
+  tone: "main" | "additional";
+}) {
+  return (
+    <div className="rounded-lg border border-card-border bg-card/60 px-2.5 py-1.5">
+      <div className={cn(AppTypography.caption, "truncate text-muted-foreground")}>{label}</div>
+      <div className={cn(AppTypography.subheadline, "tabular-nums")}>{count} шт.</div>
+      {widthMm ? (
+        <span
+          className={cn(
+            "mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold",
+            tone === "additional" ? "bg-primary text-primary-foreground" : "bg-slate-300 text-slate-900",
+          )}
+        >
+          {widthMm} мм
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** A compact labelled field cell — value shown read-only or as an input. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -327,14 +392,16 @@ function JumboPicker({
 
 /** «Добавить брак» — opens a form and only records on confirm. */
 /** Cancel confirmation — discards the active production session (no history). */
-export function CancelDialog({ vm }: { vm: ProductionVM }) {
+export function CancelDialog({ vm, trigger }: { vm: ProductionVM; trigger?: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <SecondaryButton icon={XCircle} className="h-9 justify-start text-destructive hover:text-destructive">
-          Отменить производство
-        </SecondaryButton>
+        {trigger ?? (
+          <SecondaryButton icon={XCircle} className="h-9 justify-start text-destructive hover:text-destructive">
+            Отменить производство
+          </SecondaryButton>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -355,7 +422,7 @@ export function CancelDialog({ vm }: { vm: ProductionVM }) {
   );
 }
 
-export function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boolean }) {
+export function DefectDialog({ vm, disabled, trigger }: { vm: ProductionVM; disabled: boolean; trigger?: ReactNode }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -390,9 +457,11 @@ export function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <SecondaryButton icon={AlertTriangle} className="h-9 justify-start" disabled={disabled}>
-          Добавить брак
-        </SecondaryButton>
+        {trigger ?? (
+          <SecondaryButton icon={AlertTriangle} className="h-9 justify-start" disabled={disabled}>
+            Добавить брак
+          </SecondaryButton>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -421,7 +490,7 @@ export function DefectDialog({ vm, disabled }: { vm: ProductionVM; disabled: boo
 
 /** «Подключить следующий Джамбо» — books the current Jumbo and continues the
  *  same order on the next one (no order is created, no defects carry over). */
-export function NextJumboDialog({ vm, materialNameFor }: { vm: ProductionVM; materialNameFor: (jumbo: Jumbo) => string }) {
+export function NextJumboDialog({ vm, materialNameFor, trigger }: { vm: ProductionVM; materialNameFor: (jumbo: Jumbo) => string; trigger?: ReactNode }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const none = vm.eligibleForContinue.length === 0;
@@ -433,9 +502,11 @@ export function NextJumboDialog({ vm, materialNameFor }: { vm: ProductionVM; mat
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled={none || vm.continuing}>
-          Сменить Джамбо
-        </SecondaryButton>
+        {trigger ?? (
+          <SecondaryButton icon={Repeat2} className="h-9 justify-start" disabled={none || vm.continuing}>
+            Сменить Джамбо
+          </SecondaryButton>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[80vh] overflow-y-auto">
         <DialogHeader>
@@ -561,9 +632,6 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
   const materialNameFor = (jumbo: Jumbo) => vm.materialsById.get(jumbo.materialId)?.name ?? "—";
 
   const {
-    target,
-    doneRolls,
-    remainingRolls,
     remainderPct,
     yieldPercent,
     additionalToWarehouse,
@@ -596,11 +664,13 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
   return (
     <ScreenScaffold
       title={`${strings.production.title} · ${machineTitle(machine)}`}
-      subtitle="Независимый процесс станка — заказ, Джамбо, журнал и статистика"
       toolbar={
-        <Link href="/production">
-          <SecondaryButton icon={ChevronLeft}>К обзору станков</SecondaryButton>
-        </Link>
+        <>
+          <OrderStatusBadge vm={vm} />
+          <Link href="/production">
+            <SecondaryButton icon={ChevronLeft}>К обзору станков</SecondaryButton>
+          </Link>
+        </>
       }
       wide
     >
@@ -827,11 +897,22 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
           <div className="grid gap-3 xl:grid-cols-4">
             <div className="space-y-3 xl:col-span-3">
               <CardView title="Результаты расчёта" icon={icons.dashboard} className="p-3">
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                   <Tile label="Выход" value={yieldPercent !== null ? `${yieldPercent}%` : "—"} />
                   <Tile label="Отход" value={plan ? `${plan.waste_percent.toFixed(1)}%` : "—"} tone={plan && plan.waste_percent > 7 ? "danger" : undefined} />
-                  <Tile label="Выполнено" value={plan ? `${doneRolls} шт.` : "—"} />
-                  <Tile label="Осталось" value={plan ? `${remainingRolls} шт.` : "—"} />
+                  <Tile label="Циклов" value={plan ? `${plan.cycles_used}` : "—"} />
+                  <RollResultTile
+                    label="Рулонов (осн.)"
+                    count={plan ? plan.total_main_rolls : 0}
+                    widthMm={plan ? plan.roll_width_mm : null}
+                    tone="main"
+                  />
+                  <RollResultTile
+                    label="Рулонов (доп.)"
+                    count={plan ? plan.total_additional_rolls : 0}
+                    widthMm={plan && plan.additional_width_mm ? plan.additional_width_mm : null}
+                    tone="additional"
+                  />
                   <Tile label="Использовано" value={plan ? formatMeters(plan.used_length_m) : "—"} />
                 </div>
               </CardView>
@@ -904,32 +985,49 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                 <div className="flex flex-col gap-2">
                   {locked ? (
                     <>
-                      <DefectDialog vm={vm} disabled={!locked} />
-                      <NextJumboDialog vm={vm} materialNameFor={materialNameFor} />
+                      {/* Semantic colours: оранжевый = внимание/брак, синий =
+                          управляющее, зелёный = завершение, красный = опасное. */}
+                      <DefectDialog
+                        vm={vm}
+                        disabled={false}
+                        trigger={<OpButton icon={AlertTriangle} color="bg-[#F59E0B] hover:bg-[#D97706]">Добавить брак</OpButton>}
+                      />
+                      <NextJumboDialog
+                        vm={vm}
+                        materialNameFor={materialNameFor}
+                        trigger={
+                          <OpButton icon={Repeat2} color="bg-[#2563EB] hover:bg-[#1D4ED8]" disabled={vm.eligibleForContinue.length === 0 || vm.continuing}>
+                            Сменить Джамбо
+                          </OpButton>
+                        }
+                      />
                       {vm.phase === "running" ? (
-                        <SecondaryButton icon={Pause} className="h-9 justify-start" onClick={vm.pauseProduction}>
+                        <OpButton icon={Pause} color="bg-[#F97316] hover:bg-[#EA580C]" onClick={vm.pauseProduction}>
                           Приостановить
-                        </SecondaryButton>
+                        </OpButton>
                       ) : (
-                        <SecondaryButton icon={Play} className="h-9 justify-start" onClick={vm.resumeProduction}>
+                        <OpButton icon={Play} color="bg-[#22C55E] hover:bg-[#16A34A]" onClick={vm.resumeProduction}>
                           Продолжить
-                        </SecondaryButton>
+                        </OpButton>
                       )}
-                      <PrimaryButton icon={CheckCircle2} className="mt-1 h-11 text-base" fullWidth loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
+                      <OpButton icon={CheckCircle2} color="bg-[#16A34A] hover:bg-[#15803D]" loading={vm.finishing} disabled={!vm.canExecute} onClick={() => void onFinish()}>
                         Завершить производство
-                      </PrimaryButton>
+                      </OpButton>
                       {insufficient ? (
                         <p className={cn(AppTypography.caption, "text-muted-foreground")}>
                           Текущего Джамбо недостаточно для завершения — смените Джамбо, чтобы продолжить заказ.
                         </p>
                       ) : null}
-                      <CancelDialog vm={vm} />
+                      <CancelDialog
+                        vm={vm}
+                        trigger={<OpButton icon={XCircle} color="bg-[#EF4444] hover:bg-[#DC2626]">Отменить производство</OpButton>}
+                      />
                     </>
                   ) : (
                     <>
-                      <PrimaryButton icon={PlayCircle} className="h-11 text-base" fullWidth disabled={!vm.canStart} onClick={onStart}>
-                        Запустить производство
-                      </PrimaryButton>
+                      <OpButton icon={PlayCircle} color="bg-[#22C55E] hover:bg-[#16A34A]" disabled={!vm.canStart} onClick={onStart}>
+                        Начать производство
+                      </OpButton>
                       {!vm.canStart && missingRequirements.length > 0 ? (
                         <p className={cn(AppTypography.caption, "text-muted-foreground")}>
                           Для запуска заполните: {missingRequirements.join(", ")}
@@ -937,6 +1035,14 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                       ) : null}
                     </>
                   )}
+
+                  {/* Info hint under the actions. */}
+                  <div className="mt-1 flex items-start gap-2 rounded-lg border border-card-border bg-card/50 p-3">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+                    <span className={cn(AppTypography.caption, "text-muted-foreground")}>
+                      Перед запуском убедитесь, что все параметры корректны.
+                    </span>
+                  </div>
                 </div>
               </CardView>
 

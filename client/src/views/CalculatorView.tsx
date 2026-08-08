@@ -18,14 +18,13 @@ import { AppTypography } from "@/designsystem";
 import { haptics } from "@/designsystem/haptics";
 import { useToast } from "@/hooks/use-toast";
 import { useCalculatorViewModel } from "@/viewmodels";
-import { calculatorDefaults, type CalculatorFormValues } from "@/viewmodels/calculatorSchema";
+import { calculatorDefaults } from "@/viewmodels/calculatorSchema";
 import {
   buildCuttingModel,
   CuttingVisualizer,
   InfoPanels,
   KpiPanel,
   ResultTable,
-  SessionHistory,
   type CalcSessionEntry,
   type StripeKind,
 } from "./calculator";
@@ -105,16 +104,6 @@ export function CalculatorView() {
     haptics.selection();
     window.print();
   }, [plan]);
-
-  const onRepeat = useCallback(
-    (v: CalculatorFormValues) => {
-      form.reset(v);
-      setActiveKind(null);
-      haptics.selection();
-      revealResult();
-    },
-    [form, revealResult],
-  );
 
   const recommended = plan?.optimal_additional_rolls?.[0];
 
@@ -353,11 +342,6 @@ export function CalculatorView() {
             )}
           </div>
         </div>
-
-        {/* ── Session history ────────────────────────────────────────── */}
-        <CardView title="История расчётов" icon={icons.history} animate>
-          <SessionHistory entries={entries} onRepeat={onRepeat} onClear={() => setEntries([])} />
-        </CardView>
       </div>
     </ScreenScaffold>
   );

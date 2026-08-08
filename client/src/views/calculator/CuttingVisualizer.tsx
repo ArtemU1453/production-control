@@ -83,9 +83,26 @@ export function CuttingVisualizer({
     () => stripes.filter((s) => s.kind !== "waste"),
     [stripes],
   );
-  const hasWaste = groups.some((g) => g.id === "waste");
+  const wasteGroup = groups.find((g) => g.id === "waste") ?? null;
+  const hasWaste = wasteGroup !== null;
   const mainGroup = groups.find((g) => g.id === "main") ?? null;
   const additionalGroup = groups.find((g) => g.id === "additional") ?? null;
+
+  // Trim edge: a thin red bar (roomy) or, on the compact production card, a small
+  // labelled red block ("ОТХОД / N мм") on each side per the operator spec.
+  const wasteEdge = compact ? (
+    <div
+      aria-hidden
+      title={`Отход ${formatMm(wasteGroup?.widthMm ?? 0)} с каждой стороны`}
+      className="flex shrink-0 flex-col items-center justify-center self-stretch rounded-md bg-destructive/15 px-1.5 text-destructive"
+      style={{ minWidth: 46 }}
+    >
+      <span className="text-[8px] font-semibold uppercase leading-none">Отход</span>
+      <span className="mt-0.5 text-[10px] font-bold leading-none">{wasteGroup?.widthMm ?? 0} мм</span>
+    </div>
+  ) : (
+    <span aria-hidden title="Отход (кромка)" className={cn("shrink-0 self-stretch rounded-full bg-destructive", ui.edge)} />
+  );
 
   // Two-row staggered ("brick") layout. Lanes are split as evenly as possible
   // between exactly two rows (counts differ by ≤ 1); the second row is shifted
@@ -141,13 +158,7 @@ export function CuttingVisualizer({
 
       {/* The web between its trimmed edges. */}
       <div className={cn("flex items-stretch rounded-xl border border-card-border bg-muted/20", ui.pad)}>
-        {hasWaste ? (
-          <span
-            aria-hidden
-            title="Отход (кромка)"
-            className={cn("shrink-0 self-stretch rounded-full bg-destructive", ui.edge)}
-          />
-        ) : null}
+        {hasWaste ? wasteEdge : null}
 
         <div
           className={cn("min-w-0 flex-1", ui.rows)}
@@ -195,13 +206,7 @@ export function CuttingVisualizer({
             : null}
         </div>
 
-        {hasWaste ? (
-          <span
-            aria-hidden
-            title="Отход (кромка)"
-            className="w-1 shrink-0 self-stretch rounded-full bg-destructive"
-          />
-        ) : null}
+        {hasWaste ? wasteEdge : null}
       </div>
 
       {/* Dynamic legend — only the kinds actually present. */}
@@ -230,7 +235,7 @@ export function CuttingVisualizer({
           <LegendItem
             dotClass={kindDotClass.waste}
             dotSize={ui.dot}
-            label="Отход"
+            label={`Отход (${formatMm(wasteGroup?.widthMm ?? 0)} с каждой стороны)`}
             dim={activeKind !== null && activeKind !== "waste"}
             onEnter={() => onActiveKindChange("waste")}
             onLeave={() => onActiveKindChange(null)}

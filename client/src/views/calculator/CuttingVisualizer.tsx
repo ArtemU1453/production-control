@@ -10,6 +10,13 @@ interface CuttingVisualizerProps {
   activeKind: StripeKind | null;
   onActiveKindChange: (kind: StripeKind | null) => void;
   className?: string;
+  /**
+   * Dense variant for the machine cards on the Production screen: shorter chips,
+   * smaller type, thinner trim lines and tighter spacing, so the scheme reads as
+   * a compact hint between the parameters and the stats — not a big panel. The
+   * default (roomier) variant is kept for the Calculator screen.
+   */
+  compact?: boolean;
 }
 
 const KIND_LABEL: Record<StripeKind, string> = {
@@ -36,8 +43,39 @@ export function CuttingVisualizer({
   activeKind,
   onActiveKindChange,
   className,
+  compact = false,
 }: CuttingVisualizerProps) {
   const { stripes, groups, materialWidthMm } = model;
+
+  // Size tokens — the only difference between the dense (Production) and roomy
+  // (Calculator) variants. Layout math and colours are identical.
+  const ui = compact
+    ? {
+        outer: "space-y-1.5",
+        title: AppTypography.footnote,
+        total: AppTypography.caption,
+        pad: "gap-1.5 p-1.5",
+        edge: "w-0.5",
+        rows: "space-y-1",
+        chip: "h-8",
+        num: "text-[11px]",
+        unit: "text-[8px]",
+        legend: cn(AppTypography.caption, "gap-x-3"),
+        dot: "h-2 w-2",
+      }
+    : {
+        outer: "space-y-3",
+        title: AppTypography.subheadline,
+        total: AppTypography.footnote,
+        pad: "gap-2 p-3",
+        edge: "w-1",
+        rows: "space-y-1.5",
+        chip: "h-14",
+        num: "text-sm",
+        unit: "text-[10px]",
+        legend: cn(AppTypography.caption, "gap-x-4"),
+        dot: "h-2.5 w-2.5",
+      };
 
   // Only the cut lanes become chips; the trimmed edges are drawn as the red
   // side lines, not as chips.
@@ -94,27 +132,25 @@ export function CuttingVisualizer({
   };
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn(ui.outer, className)}>
       {/* Header: title + total Jumbo width. */}
       <div className="flex items-center justify-between gap-2">
-        <div className={cn(AppTypography.subheadline)}>Схема раскроя</div>
-        <div className={cn(AppTypography.footnote, "text-muted-foreground")}>
-          Общая: <span className="font-semibold text-foreground">{formatMm(materialWidthMm)}</span>
-        </div>
+        <div className={cn(ui.title)}>Схема раскроя</div>
+        <div className={cn(ui.total, "font-semibold")}>{formatMm(materialWidthMm)}</div>
       </div>
 
       {/* The web between its trimmed edges. */}
-      <div className="flex items-stretch gap-2 rounded-2xl border border-card-border bg-muted/20 p-3">
+      <div className={cn("flex items-stretch rounded-xl border border-card-border bg-muted/20", ui.pad)}>
         {hasWaste ? (
           <span
             aria-hidden
             title="Отход (кромка)"
-            className="w-1 shrink-0 self-stretch rounded-full bg-destructive"
+            className={cn("shrink-0 self-stretch rounded-full bg-destructive", ui.edge)}
           />
         ) : null}
 
         <div
-          className="min-w-0 flex-1 space-y-1.5"
+          className={cn("min-w-0 flex-1", ui.rows)}
           role="img"
           aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос в два ряда.`}
         >
@@ -141,14 +177,15 @@ export function CuttingVisualizer({
                             marginLeft: `${marginLeftPct}%`,
                           }}
                           className={cn(
-                            "flex h-14 min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg text-center leading-none transition-opacity",
+                            "flex min-w-0 flex-col items-center justify-center overflow-hidden rounded-md text-center leading-none transition-opacity",
+                            ui.chip,
                             kindChipClass[kind],
                             isActive && "ring-2 ring-ring",
                             dim && "opacity-50",
                           )}
                         >
-                          <span className="text-sm font-semibold tabular-nums">{chip.widthMm}</span>
-                          <span className="mt-0.5 text-[10px] font-medium opacity-80">мм</span>
+                          <span className={cn("font-semibold tabular-nums", ui.num)}>{chip.widthMm}</span>
+                          <span className={cn("font-medium opacity-80", ui.unit)}>мм</span>
                         </div>
                       );
                     })}
@@ -168,11 +205,12 @@ export function CuttingVisualizer({
       </div>
 
       {/* Dynamic legend — only the kinds actually present. */}
-      <div className={cn(AppTypography.caption, "flex flex-wrap items-center gap-x-4 gap-y-1")}>
+      <div className={cn(ui.legend, "flex flex-wrap items-center gap-y-1")}>
         {mainGroup ? (
           <LegendItem
             dotClass={kindDotClass.main}
-            label={`Основная (${formatMm(mainGroup.widthMm)})`}
+            dotSize={ui.dot}
+            label={`Основная ${formatMm(mainGroup.widthMm)}`}
             dim={activeKind !== null && activeKind !== "main"}
             onEnter={() => onActiveKindChange("main")}
             onLeave={() => onActiveKindChange(null)}
@@ -181,7 +219,8 @@ export function CuttingVisualizer({
         {additionalGroup ? (
           <LegendItem
             dotClass={kindDotClass.additional}
-            label={`Доп. (${formatMm(additionalGroup.widthMm)})`}
+            dotSize={ui.dot}
+            label={`Доп. ${formatMm(additionalGroup.widthMm)}`}
             dim={activeKind !== null && activeKind !== "additional"}
             onEnter={() => onActiveKindChange("additional")}
             onLeave={() => onActiveKindChange(null)}
@@ -190,6 +229,7 @@ export function CuttingVisualizer({
         {hasWaste ? (
           <LegendItem
             dotClass={kindDotClass.waste}
+            dotSize={ui.dot}
             label="Отход"
             dim={activeKind !== null && activeKind !== "waste"}
             onEnter={() => onActiveKindChange("waste")}
@@ -203,12 +243,14 @@ export function CuttingVisualizer({
 
 function LegendItem({
   dotClass,
+  dotSize,
   label,
   dim,
   onEnter,
   onLeave,
 }: {
   dotClass: string;
+  dotSize: string;
   label: string;
   dim: boolean;
   onEnter: () => void;
@@ -222,11 +264,11 @@ function LegendItem({
       onFocus={onEnter}
       onBlur={onLeave}
       className={cn(
-        "flex items-center gap-2 rounded-md px-1 py-0.5 outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
+        "flex items-center gap-1.5 rounded-md px-1 py-0.5 outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
         dim && "opacity-50",
       )}
     >
-      <span className={cn("h-2.5 w-2.5 rounded-full", dotClass)} />
+      <span className={cn("rounded-full", dotSize, dotClass)} />
       <span className="text-muted-foreground">{label}</span>
     </button>
   );

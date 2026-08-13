@@ -61,6 +61,31 @@ export interface CuttingModel {
 /** Threshold below which a stripe's inline label is hidden (too narrow). */
 export const STRIPE_LABEL_MIN_PERCENT = 6;
 
+/**
+ * Distributes `items` (the cut rolls — never waste) into exactly `rows` visual
+ * rows as evenly as possible: the first `items.length % rows` rows get one extra
+ * item, the rest get the base count, so any two rows differ by at most one item.
+ * Each row is filled left-to-right in the original order; the last (possibly
+ * shorter) row starts at the left and leaves the right empty — it is never
+ * centred. Purely a layout helper — it moves nothing about the cutting maths.
+ *
+ * Shared by every «Схема раскроя» (Расчёт and Производство both render through
+ * CuttingVisualizer), so the row layout can never diverge between screens.
+ */
+export function distributeRollsIntoRows<T>(items: readonly T[], rows: number): T[][] {
+  const rowCount = Math.max(1, Math.min(rows, items.length || 1));
+  const base = Math.floor(items.length / rowCount);
+  const remainder = items.length % rowCount;
+  const result: T[][] = [];
+  let cursor = 0;
+  for (let r = 0; r < rowCount; r += 1) {
+    const size = base + (r < remainder ? 1 : 0);
+    result.push(items.slice(cursor, cursor + size));
+    cursor += size;
+  }
+  return result;
+}
+
 /** Tailwind fill class per stripe kind; matches the legend + grid tones. */
 export const STRIPE_FILL: Record<StripeKind, string> = {
   main: "hsl(var(--primary))",

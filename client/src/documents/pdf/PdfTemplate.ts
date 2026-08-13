@@ -27,7 +27,7 @@ const LOGO = `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns=
  * date. All report kinds share this style.
  */
 export function renderReportDocument(report: ReportData, options: PdfTemplateOptions = {}): string {
-  const company = options.companyName?.trim() || "Калькулятор нарезки";
+  const company = options.companyName?.trim() || "Производство";
 
   const headCells = report.table.columns
     .map(

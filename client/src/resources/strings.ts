@@ -1,7 +1,7 @@
 /** Centralized user-facing strings. Keeping copy in one place keeps tone
  *  consistent and makes future localization a single-file change. */
 export const strings = {
-  appName: "Калькулятор нарезки",
+  appName: "Производство",
   tabs: {
     dashboard: "Обзор",
     calculator: "Расчёт",

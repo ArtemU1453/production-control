@@ -1,8 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { AppTypography } from "@/designsystem";
-import { icons } from "@/resources/icons";
 import { tabs, secondaryNav, iconFor, type TabDefinition } from "@/app/navigation";
+
+/** Brand logo served from the public dir (base-aware for the GitHub Pages
+ *  sub-path). Square source, shown `object-contain` so it never distorts. */
+const LOGO_SRC = `${import.meta.env.BASE_URL}logo.png`;
 
 function isActive(current: string, path: string): boolean {
   return path === "/" ? current === "/" : current.startsWith(path);
@@ -41,7 +44,6 @@ function NavLink({ item, current }: { item: TabDefinition; current: string }) {
  */
 export function Sidebar() {
   const [location] = useLocation();
-  const AppMark = icons.cut;
 
   return (
     <aside
@@ -51,11 +53,15 @@ export function Sidebar() {
       aria-label="Боковая навигация"
     >
       <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <AppMark className="h-[18px] w-[18px]" />
-        </span>
+        <img
+          src={LOGO_SRC}
+          alt="Производство"
+          width={32}
+          height={32}
+          className="h-8 w-8 shrink-0 rounded-xl object-contain shadow-sm"
+        />
         <div className="min-w-0 leading-tight">
-          <div className={cn(AppTypography.subheadline, "truncate")}>Production Control</div>
+          <div className={cn(AppTypography.subheadline, "truncate")}>Производство</div>
           <div className={cn(AppTypography.caption, "truncate text-muted-foreground")}>Производственный учёт</div>
         </div>
       </div>
@@ -75,7 +81,7 @@ export function Sidebar() {
         className={cn(AppTypography.caption, "shrink-0 px-4 py-2 text-muted-foreground")}
         style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       >
-        v2 · Production Control
+        v2 · Производство
       </div>
     </aside>
   );

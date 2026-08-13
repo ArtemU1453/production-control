@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { formatMm } from "@/extensions/number";
 import { AppTypography } from "@/designsystem";
@@ -104,49 +104,25 @@ export function CuttingVisualizer({
     <span aria-hidden title="Отход (кромка)" className={cn("shrink-0 self-stretch rounded-full bg-destructive", ui.edge)} />
   );
 
-  // Inter-chip gap (px) and the minimum readable chip width, per variant.
+  // Inter-chip gap (px), per variant.
   const gapPx = compact ? 4 : 6;
-  const minChipPx = compact ? 38 : 52;
 
-  // Measure the available width of the rolls area so the number of rows adapts to
-  // the container (desktop / tablet / phone) rather than being fixed.
-  const rowsRef = useRef<HTMLDivElement>(null);
-  const [areaWidth, setAreaWidth] = useState(0);
-  useEffect(() => {
-    const el = rowsRef.current;
-    if (!el || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setAreaWidth(entry.contentRect.width);
-      }
-    });
-    ro.observe(el);
-    setAreaWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
-
-  // Even row layout: pick the row count from the available width (how many
-  // readable chips fit per row), then distribute the rolls across exactly that
-  // many rows so any two rows differ by at most one — never more. Columns are a
-  // fixed width so rows align; a short last row stays left-aligned. Waste is not
-  // part of this — the trimmed edges are separate red elements flanking the block.
+  // Always exactly TWO rows: top = ceil(n/2), bottom = floor(n/2) — so the top
+  // row has at most one more roll than the bottom, and the bottom never has more
+  // than the top (a single roll shows one row). Chips shrink to fit narrow
+  // screens; the scheme never collapses to one long row or grows a third row.
+  // Waste is not part of this — the trimmed edges are separate red elements
+  // flanking the block. Columns share a fixed width so the two rows align, and a
+  // shorter bottom row stays left-aligned with the right side left empty.
   const layout = useMemo(() => {
     const items = laneChips;
-    const n = items.length;
-    if (n === 0) {
+    if (items.length === 0) {
       return null;
     }
-    // How many chips fit on one row at the readable minimum width. Before the
-    // first measurement (areaWidth 0) assume everything fits on one row.
-    const perRow =
-      areaWidth > 0 ? Math.max(1, Math.floor((areaWidth + gapPx) / (minChipPx + gapPx))) : n;
-    const rowCount = Math.max(1, Math.ceil(n / perRow));
-    const rows = distributeRollsIntoRows(items, rowCount);
-    const columns = rows.length > 0 ? rows[0].length : 1; // widest row = column count
+    const rows = distributeRollsIntoRows(items, 2).filter((row) => row.length > 0);
+    const columns = rows[0].length; // top row = ceil(n/2) = column count
     return { rows, columns };
-  }, [laneChips, areaWidth, gapPx, minChipPx]);
+  }, [laneChips]);
 
   const kindChipClass: Record<Exclude<StripeKind, "waste">, string> = {
     main: "bg-slate-300 text-slate-900",
@@ -171,10 +147,9 @@ export function CuttingVisualizer({
         {hasWaste ? wasteEdge : null}
 
         <div
-          ref={rowsRef}
           className={cn("min-w-0 flex-1", ui.rows)}
           role="img"
-          aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос.`}
+          aria-label={`Схема раскроя материала шириной ${formatMm(materialWidthMm)}: ${laneChips.length} полос в два ряда.`}
         >
           {layout
             ? layout.rows.map((rowItems, rowIndex) => (

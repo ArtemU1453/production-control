@@ -119,6 +119,15 @@ export type CalcResult = {
   shortage_cycles: number;
   shortage_length_m: number;
   optimal_additional_rolls?: Array<{ width: number; count: number }> | null;
+  /** True when the plan was computed in «Образцы» (samples) mode. */
+  sample_mode: boolean;
+  /**
+   * One entry per sample width that is actually cut, each with the SAME count
+   * (equal-quantity rule). Null outside samples mode.
+   */
+  sample_groups: Array<{ width: number; per_cycle: number; total: number }> | null;
+  /** Sample widths that had to be dropped (smallest first) to keep counts equal. */
+  dropped_sample_widths: number[];
 };
 
 export function calculate(
@@ -131,7 +140,40 @@ export function calculate(
   additional_width_mm: number | null = null,
   additional_width_mm_2: number | null = null,
   auto_additional: boolean = true,
+  samples_mode: boolean = false,
+  sample_widths_mm: number[] | null = null,
 ): CalcResult {
+  if (!order_rolls || order_rolls <= 0) {
+    throw new Error("Количество рулонов в заказе должно быть больше нуля.");
+  }
+  order_rolls = Math.floor(order_rolls);
+
+  // «Образцы» mode bypasses the main/additional cross-section entirely: the
+  // sample widths ARE the cut lanes, in equal quantity. Only material width,
+  // length and the Jumbo are needed — the single roll-width field is unused.
+  if (samples_mode && sample_widths_mm && sample_widths_mm.length > 0) {
+    if (material_width_mm < RANGE_MATERIAL_WIDTH[0] || material_width_mm > RANGE_MATERIAL_WIDTH[1]) {
+      throw new Error("Ширина материала должна быть от 550 до 910 мм.");
+    }
+    if (useful_width_mm > material_width_mm) {
+      throw new Error("Полезная ширина не может быть больше общей.");
+    }
+    if (roll_length_m < RANGE_ROLL_LENGTH[0] || roll_length_m > RANGE_ROLL_LENGTH[1]) {
+      throw new Error("Длина рулона должна быть от 30 до 1100 м.");
+    }
+    if (big_roll_length_m <= 0 || big_roll_length_m > MAX_BIG_ROLL_LENGTH_M) {
+      throw new Error("Намотка Джамба должна быть от 1 до 22000 м.");
+    }
+    return _calculate_samples(
+      material_width_mm,
+      useful_width_mm,
+      roll_length_m,
+      big_roll_length_m,
+      order_rolls,
+      sample_widths_mm,
+    );
+  }
+
   _validate_inputs(
     material_width_mm,
     useful_width_mm,
@@ -139,11 +181,6 @@ export function calculate(
     roll_length_m,
     big_roll_length_m,
   );
-
-  if (!order_rolls || order_rolls <= 0) {
-    throw new Error("Количество рулонов в заказе должно быть больше нуля.");
-  }
-  order_rolls = Math.floor(order_rolls);
 
   const roll_width_input_mm = roll_width_mm;
 
@@ -357,5 +394,137 @@ export function calculate(
     shortage_cycles,
     shortage_length_m,
     optimal_additional_rolls,
+    sample_mode: false,
+    sample_groups: null,
+    dropped_sample_widths: [],
+  };
+}
+
+/**
+ * «Образцы» (samples) mode — cuts a set of sample widths in **equal quantity**.
+ *
+ * Rule: across the useful width we place the same number `m` of every sample.
+ * `m = floor(useful_width / Σ widths)`. If not even one of each fits
+ * (Σ widths > useful_width), we DROP the smallest width and retry — never round
+ * counts — until the remaining widths fit; every surviving sample then keeps an
+ * identical count. Length/cycle/area maths mirror the normal engine so the rest
+ * of the UI (KPIs, waste, remaining Jumbo) stays consistent.
+ */
+function _calculate_samples(
+  material_width_mm: number,
+  useful_width_mm: number,
+  roll_length_m: number,
+  big_roll_length_m: number,
+  order_rolls: number,
+  sample_widths_mm: number[],
+): CalcResult {
+  const cleaned = sample_widths_mm
+    .map((w) => Number(w))
+    .filter((w) => !isNaN(w) && w > 0);
+  if (cleaned.length === 0) {
+    throw new Error("Введите хотя бы одну ширину образца.");
+  }
+  for (const w of cleaned) {
+    if (w < RANGE_ROLL_WIDTH[0] || w > RANGE_ROLL_WIDTH[1]) {
+      throw new Error(`Ширина образца ${w} мм должна быть от 20 до 310 мм.`);
+    }
+  }
+
+  // Keep counts equal: drop the smallest width while even one of each does not
+  // fit across the useful width.
+  const widths = [...cleaned].sort((a, b) => a - b);
+  const sum = (arr: number[]) => arr.reduce((s, w) => s + w, 0);
+  const dropped_sample_widths: number[] = [];
+  while (widths.length > 1 && sum(widths) > useful_width_mm) {
+    dropped_sample_widths.push(widths.shift() as number);
+  }
+  if (sum(widths) > useful_width_mm) {
+    throw new Error(
+      `Образец ${widths[0]} мм шире полезной ширины ${useful_width_mm.toFixed(0)} мм.`,
+    );
+  }
+
+  const widths_sum = sum(widths);
+  const per_cycle = Math.floor(useful_width_mm / widths_sum); // ≥ 1 by construction
+  const strips_per_cycle = per_cycle * widths.length;
+
+  const available_length_m = big_roll_length_m - SETUP_LENGTH_M;
+  if (available_length_m < roll_length_m) {
+    throw new Error("Недостаточная длина большого рулона с учетом 10 м расхода.");
+  }
+  const length_count = Math.floor(available_length_m / roll_length_m);
+  const length_waste_m = available_length_m - length_count * roll_length_m;
+
+  const cycles_needed = Math.ceil(order_rolls / strips_per_cycle);
+  const cycles_used = Math.min(cycles_needed, length_count);
+
+  const per_sample_total = per_cycle * cycles_used;
+  const sample_groups = widths.map((w) => ({ width: w, per_cycle, total: per_sample_total }));
+  const total_rolls = per_sample_total * widths.length;
+
+  const length_rate = _cycles_per_hour_by_length(roll_length_m);
+  const cycles_per_hour = length_rate;
+  const estimated_hours = cycles_per_hour ? cycles_needed / cycles_per_hour + 0.25 : null;
+
+  let used_length_m = cycles_used * roll_length_m + SETUP_LENGTH_M;
+  const remaining_jumbo_m = Math.max(0, big_roll_length_m - used_length_m);
+  const shortage_cycles = Math.max(0, cycles_needed - cycles_used);
+  const shortage_length_m = shortage_cycles * roll_length_m;
+  const shortage_rolls = Math.max(0, order_rolls - total_rolls);
+  if (shortage_rolls > 0) {
+    used_length_m = big_roll_length_m;
+  }
+
+  const used_width_mm = widths_sum * per_cycle;
+  const total_area_m2 = (material_width_mm / 1000) * used_length_m;
+  const useful_area_m2 = (used_width_mm / 1000) * (cycles_used * roll_length_m);
+  const waste_area_m2 = total_area_m2 - useful_area_m2;
+  const waste_percent = total_area_m2 > 0 ? (waste_area_m2 / total_area_m2) * 100 : 0;
+  const total_waste_width_mm = material_width_mm - used_width_mm;
+  const waste_per_side_mm = total_waste_width_mm > 0 ? total_waste_width_mm / 2 : 0;
+
+  return {
+    material_width_mm,
+    useful_width_mm,
+    roll_width_input_mm: 0,
+    roll_width_mm: 0,
+    roll_length_m,
+    big_roll_length_m,
+    order_rolls,
+    main_count: 0,
+    remaining_width_mm: 0,
+    additional_width_mm: null,
+    additional_width_mm_2: null,
+    was_adjusted: false,
+    rolls_per_cycle: strips_per_cycle,
+    cycles_needed,
+    cycles_used,
+    cycles_per_hour,
+    estimated_hours,
+    used_length_m,
+    length_count,
+    length_waste_m,
+    total_main_rolls: 0,
+    total_additional_rolls: 0,
+    total_additional_rolls_1: 0,
+    total_additional_rolls_2: 0,
+    total_rolls,
+    surplus_rolls: Math.max(0, total_rolls - order_rolls),
+    surplus_main_rolls: 0,
+    surplus_additional_rolls: 0,
+    shortage_rolls,
+    total_area_m2: Math.round(total_area_m2 * 10) / 10,
+    useful_area_m2: Math.round(useful_area_m2 * 10) / 10,
+    waste_area_m2: Math.round(waste_area_m2 * 10) / 10,
+    waste_percent: Math.round(waste_percent * 10) / 10,
+    waste_per_side_mm,
+    inner_waste_mm: 0,
+    remaining_jumbo_m,
+    shortage_cycles,
+    shortage_length_m,
+    optimal_additional_rolls: null,
+    sample_mode: true,
+    sample_groups,
+    dropped_sample_widths,
   };
 }

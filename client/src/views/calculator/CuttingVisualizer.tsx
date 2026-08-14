@@ -23,8 +23,31 @@ const KIND_LABEL: Record<StripeKind, string> = {
   main: "Основная",
   additional: "Доп.",
   additional2: "Доп. 2",
+  sample: "Образец",
   waste: "Отход",
 };
+
+/**
+ * Per-sample chip / dot colour palettes for «Образцы» mode, cycled by sample
+ * index. The order matches SAMPLE_FILLS in cuttingModel so the scheme, the
+ * legend and the results table all agree on each sample's colour.
+ */
+const SAMPLE_CHIP = [
+  "bg-[#2563eb] text-white",
+  "bg-[#7c3aed] text-white",
+  "bg-[#0d9488] text-white",
+  "bg-[#ea580c] text-white",
+  "bg-[#db2777] text-white",
+  "bg-[#65a30d] text-white",
+];
+const SAMPLE_DOT = [
+  "bg-[#2563eb]",
+  "bg-[#7c3aed]",
+  "bg-[#0d9488]",
+  "bg-[#ea580c]",
+  "bg-[#db2777]",
+  "bg-[#65a30d]",
+];
 
 /**
  * CuttingVisualizer — a compact production indicator of the cutting layout.
@@ -89,6 +112,7 @@ export function CuttingVisualizer({
   const mainGroup = groups.find((g) => g.id === "main") ?? null;
   const additionalGroup = groups.find((g) => g.id === "additional") ?? null;
   const additionalGroup2 = groups.find((g) => g.id === "additional2") ?? null;
+  const sampleGroups = groups.filter((g) => g.kind === "sample");
 
   // Trim edge: a thin red bar (roomy) or, on the compact production card, a small
   // labelled red block ("ОТХОД / N мм") on each side per the operator spec.
@@ -141,7 +165,7 @@ export function CuttingVisualizer({
     return { rows, chipWidth, offset };
   }, [laneChips, gapPx]);
 
-  const kindChipClass: Record<Exclude<StripeKind, "waste">, string> = {
+  const kindChipClass: Record<"main" | "additional" | "additional2", string> = {
     main: "bg-slate-300 text-slate-900",
     additional: "bg-primary text-primary-foreground",
     // Distinct indigo/violet so доп#2 is never confused with доп#1 (blue).
@@ -151,8 +175,15 @@ export function CuttingVisualizer({
     main: "bg-slate-300",
     additional: "bg-primary",
     additional2: "bg-indigo-500",
+    sample: "bg-[#2563eb]",
     waste: "bg-destructive",
   };
+  // Resolves a lane chip's colour — sample lanes cycle through SAMPLE_CHIP by
+  // their sample index; the fixed kinds use kindChipClass.
+  const chipClassFor = (chip: (typeof laneChips)[number]): string =>
+    chip.kind === "sample"
+      ? SAMPLE_CHIP[(chip.sampleIndex ?? 0) % SAMPLE_CHIP.length]
+      : kindChipClass[chip.kind as "main" | "additional" | "additional2"];
 
   return (
     <div className={cn(ui.outer, className)}>
@@ -180,7 +211,7 @@ export function CuttingVisualizer({
                   style={{ gap: gapPx, marginLeft: rowIndex === 1 ? layout.offset : undefined }}
                 >
                   {rowItems.map((chip) => {
-                    const kind = chip.kind as Exclude<StripeKind, "waste">;
+                    const kind = chip.kind;
                     const isActive = activeKind === kind;
                     const dim = activeKind !== null && !isActive;
                     return (
@@ -195,7 +226,7 @@ export function CuttingVisualizer({
                         className={cn(
                           "flex min-w-0 flex-col items-center justify-center overflow-hidden rounded-md text-center leading-none transition-opacity",
                           ui.chip,
-                          kindChipClass[kind],
+                          chipClassFor(chip),
                           isActive && "ring-2 ring-ring",
                           dim && "opacity-50",
                         )}
@@ -245,6 +276,17 @@ export function CuttingVisualizer({
             onLeave={() => onActiveKindChange(null)}
           />
         ) : null}
+        {sampleGroups.map((group) => (
+          <LegendItem
+            key={group.id}
+            dotClass={SAMPLE_DOT[(group.sampleIndex ?? 0) % SAMPLE_DOT.length]}
+            dotSize={ui.dot}
+            label={`${group.title} ${formatMm(group.widthMm)} · ${group.totalRolls} шт.`}
+            dim={activeKind !== null && activeKind !== "sample"}
+            onEnter={() => onActiveKindChange("sample")}
+            onLeave={() => onActiveKindChange(null)}
+          />
+        ))}
         {hasWaste ? (
           <LegendItem
             dotClass={kindDotClass.waste}

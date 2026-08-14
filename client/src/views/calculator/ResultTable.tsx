@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import type { CalcResult } from "@/services";
 import { AppTypography } from "@/designsystem";
 import { formatArea, formatMeters, formatMm, formatPercent } from "@/extensions/number";
-import { STRIPE_FILL, type CuttingModel, type StripeKind } from "./cuttingModel";
+import { fillFor, type CuttingModel, type StripeKind } from "./cuttingModel";
 
 interface ResultTableProps {
   plan: CalcResult;
@@ -51,11 +51,11 @@ export function ResultTable({
           <span className="text-right">Статус</span>
         </div>
         {model.groups.map((group) => {
-          const active = activeKind === group.id;
+          const active = activeKind === group.kind;
           return (
             <div
               key={group.id}
-              onMouseEnter={() => onActiveKindChange(group.id)}
+              onMouseEnter={() => onActiveKindChange(group.kind)}
               onMouseLeave={() => onActiveKindChange(null)}
               className={cn(
                 "grid items-center border-t border-card-border px-3 py-2.5 transition-colors",
@@ -68,15 +68,15 @@ export function ResultTable({
               <span className="flex items-center gap-2">
                 <span
                   className="h-3 w-3 shrink-0 rounded-[3px]"
-                  style={{ background: STRIPE_FILL[group.id] }}
+                  style={{ background: fillFor(group.kind, group.sampleIndex) }}
                   aria-hidden
                 />
                 <span className="truncate font-medium">{group.title}</span>
               </span>
               <span className="text-right">{formatMm(group.widthMm)}</span>
               <span className="text-right">
-                {group.id === "waste" ? "—" : `${group.totalRolls} шт.`}
-                {group.id !== "waste" ? (
+                {group.kind === "waste" ? "—" : `${group.totalRolls} шт.`}
+                {group.kind !== "waste" ? (
                   <span className="ml-1 text-muted-foreground">·{group.perCycle}/ц</span>
                 ) : null}
               </span>
@@ -84,7 +84,7 @@ export function ResultTable({
               <span className="text-right">{formatArea(group.rollAreaM2)}</span>
               <span className="text-right">{formatPercent(group.widthPercent)}</span>
               <span className="text-right">
-                <StatusPill kind={group.id} label={group.statusLabel} />
+                <StatusPill fill={fillFor(group.kind, group.sampleIndex)} label={group.statusLabel} />
               </span>
             </div>
           );
@@ -94,11 +94,11 @@ export function ResultTable({
       {/* Mobile cards. */}
       <div className="space-y-2 md:hidden">
         {model.groups.map((group) => {
-          const active = activeKind === group.id;
+          const active = activeKind === group.kind;
           return (
             <div
               key={group.id}
-              onTouchStart={() => onActiveKindChange(group.id)}
+              onTouchStart={() => onActiveKindChange(group.kind)}
               className={cn(
                 "rounded-2xl border border-card-border p-3 transition-colors",
                 active && "bg-muted/60",
@@ -108,23 +108,23 @@ export function ResultTable({
                 <span className="flex items-center gap-2">
                   <span
                     className="h-3 w-3 shrink-0 rounded-[3px]"
-                    style={{ background: STRIPE_FILL[group.id] }}
+                    style={{ background: fillFor(group.kind, group.sampleIndex) }}
                     aria-hidden
                   />
                   <span className={cn(AppTypography.subheadline)}>{group.title}</span>
                 </span>
-                <StatusPill kind={group.id} label={group.statusLabel} />
+                <StatusPill fill={fillFor(group.kind, group.sampleIndex)} label={group.statusLabel} />
               </div>
               <div className={cn(AppTypography.caption, "mt-2 grid grid-cols-3 gap-2 tabular-nums")}>
                 <Cell label="Ширина" value={formatMm(group.widthMm)} />
                 <Cell
                   label="Кол-во"
-                  value={group.id === "waste" ? "—" : `${group.totalRolls} шт.`}
+                  value={group.kind === "waste" ? "—" : `${group.totalRolls} шт.`}
                 />
                 <Cell label="Длина" value={formatMeters(group.rollLengthM)} />
                 <Cell label="Площадь рул." value={formatArea(group.rollAreaM2)} />
                 <Cell label="Доля ширины" value={formatPercent(group.widthPercent)} />
-                {group.id !== "waste" ? (
+                {group.kind !== "waste" ? (
                   <Cell label="На цикл" value={`${group.perCycle} шт.`} />
                 ) : null}
               </div>
@@ -163,13 +163,13 @@ function Cell({
   );
 }
 
-function StatusPill({ kind, label }: { kind: StripeKind; label: string }) {
+function StatusPill({ fill, label }: { fill: string; label: string }) {
   return (
     <span
       className={cn(AppTypography.caption2, "inline-flex items-center gap-1 rounded-full px-2 py-0.5")}
       style={{
-        background: `color-mix(in srgb, ${STRIPE_FILL[kind]} 16%, transparent)`,
-        color: STRIPE_FILL[kind],
+        background: `color-mix(in srgb, ${fill} 16%, transparent)`,
+        color: fill,
       }}
     >
       {label}

@@ -13,7 +13,7 @@ import type { CalcResult } from "@/services";
  * engine result.
  */
 
-export type StripeKind = "main" | "additional" | "additional2" | "waste";
+export type StripeKind = "main" | "additional" | "additional2" | "sample" | "waste";
 
 /** A single vertical band in the cross-section visualisation. */
 export interface Stripe {
@@ -27,11 +27,18 @@ export interface Stripe {
   position: number;
   /** 1-based index among strips of the same kind (for labels/shading). */
   ordinal: number;
+  /** 0-based sample index (samples mode only) — selects the sample colour. */
+  sampleIndex?: number;
 }
 
 /** A grouped row for the results grid, one per stripe kind that is present. */
 export interface StripeGroup {
-  id: StripeKind;
+  /** Unique row id (equals the kind for the fixed kinds, `sample-<i>` for samples). */
+  id: string;
+  /** Stripe kind this group represents (many sample groups share kind "sample"). */
+  kind: StripeKind;
+  /** 0-based sample index (samples mode only) — selects the sample colour. */
+  sampleIndex?: number;
   /** Human label, e.g. "Основные ручьи". */
   title: string;
   widthMm: number;
@@ -45,7 +52,7 @@ export interface StripeGroup {
   rollAreaM2: number;
   /** Share of the material width, 0…100 — display ratio only. */
   widthPercent: number;
-  tone: "primary" | "accent" | "accent2" | "danger";
+  tone: "primary" | "accent" | "accent2" | "sample" | "danger";
   statusLabel: string;
 }
 
@@ -93,8 +100,32 @@ export const STRIPE_FILL: Record<StripeKind, string> = {
   // A distinct indigo/violet so the second additional size never blends into
   // the first (blue) — kept in sync with CuttingVisualizer's chip/dot classes.
   additional2: "#6366f1",
+  // Fallback only — individual sample lanes are coloured by SAMPLE_FILLS below.
+  sample: "#0ea5e9",
   waste: "hsl(var(--destructive))",
 };
+
+/**
+ * A cyclic palette of distinguishable colours for «Образцы» lanes — one per
+ * sample width, reused if there are more samples than colours. Kept in sync
+ * with CuttingVisualizer's SAMPLE_CHIP / SAMPLE_DOT class palettes (same order).
+ */
+export const SAMPLE_FILLS: string[] = [
+  "#2563eb", // blue
+  "#7c3aed", // violet
+  "#0d9488", // teal
+  "#ea580c", // orange
+  "#db2777", // pink
+  "#65a30d", // lime
+];
+
+/** Resolves the fill colour for a stripe/group, honouring the sample palette. */
+export function fillFor(kind: StripeKind, sampleIndex?: number): string {
+  if (kind === "sample" && sampleIndex !== undefined) {
+    return SAMPLE_FILLS[sampleIndex % SAMPLE_FILLS.length];
+  }
+  return STRIPE_FILL[kind];
+}
 
 /**
  * Builds the presentational cutting model from an engine result. The stripe
@@ -122,6 +153,12 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
     material_width_mm > 0 ? (widthMm / material_width_mm) * 100 : 0;
   const rollArea = (widthMm: number) =>
     Math.round(((widthMm / 1000) * roll_length_m) * 100) / 100;
+
+  // «Образцы» mode: the cross-section is the sample lanes, each cut in equal
+  // quantity (per_cycle copies). Each sample gets its own colour + results row.
+  if (plan.sample_mode && plan.sample_groups && plan.sample_groups.length > 0) {
+    return buildSampleModel(plan, pct, rollArea, waste_per_side_mm);
+  }
 
   const stripes: Stripe[] = [];
   let position = 0;
@@ -190,6 +227,7 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
   if (main_count > 0) {
     groups.push({
       id: "main",
+      kind: "main",
       title: "Основные ручьи",
       widthMm: roll_width_mm,
       totalRolls: total_main_rolls,
@@ -205,6 +243,7 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
   if (additional_width_mm && additional_width_mm > 0) {
     groups.push({
       id: "additional",
+      kind: "additional",
       title: "Доп. ручей",
       widthMm: additional_width_mm,
       totalRolls: total_additional_rolls_1,
@@ -220,6 +259,7 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
   if (additional_width_mm_2 && additional_width_mm_2 > 0) {
     groups.push({
       id: "additional2",
+      kind: "additional2",
       title: "Доп. ручей 2",
       widthMm: additional_width_mm_2,
       totalRolls: total_additional_rolls_2,
@@ -235,6 +275,7 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
   if (hasWaste) {
     groups.push({
       id: "waste",
+      kind: "waste",
       title: "Кромка (обрез)",
       widthMm: waste_per_side_mm,
       totalRolls: 0,
@@ -254,6 +295,104 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
     main_count +
     (additional_width_mm && additional_width_mm > 0 ? 1 : 0) +
     (additional_width_mm_2 && additional_width_mm_2 > 0 ? 1 : 0);
+  const knifeCount = cutStrips > 0 ? cutStrips + 1 : 0;
+
+  return {
+    materialWidthMm: material_width_mm,
+    usefulWidthMm: useful_width_mm,
+    stripes,
+    groups,
+    knifeCount,
+  };
+}
+
+/**
+ * Builds the cutting model for «Образцы» mode. Lanes are grouped by sample: all
+ * `per_cycle` copies of sample 1, then sample 2, … so the equal per-sample count
+ * is visible at a glance and each sample keeps one colour. A trimmed edge is
+ * drawn on each side, exactly as in the normal cross-section.
+ */
+function buildSampleModel(
+  plan: CalcResult,
+  pct: (widthMm: number) => number,
+  rollArea: (widthMm: number) => number,
+  waste_per_side_mm: number,
+): CuttingModel {
+  const { material_width_mm, useful_width_mm, roll_length_m, sample_groups } = plan;
+  const samples = sample_groups ?? [];
+
+  const stripes: Stripe[] = [];
+  let position = 0;
+  const hasWaste = waste_per_side_mm > 0.01;
+
+  if (hasWaste) {
+    stripes.push({
+      id: "waste-left",
+      kind: "waste",
+      widthMm: waste_per_side_mm,
+      widthPercent: pct(waste_per_side_mm),
+      position: position++,
+      ordinal: 1,
+    });
+  }
+
+  samples.forEach((sample, sampleIndex) => {
+    for (let copy = 0; copy < sample.per_cycle; copy++) {
+      stripes.push({
+        id: `sample-${sampleIndex}-${copy}`,
+        kind: "sample",
+        sampleIndex,
+        widthMm: sample.width,
+        widthPercent: pct(sample.width),
+        position: position++,
+        ordinal: copy + 1,
+      });
+    }
+  });
+
+  if (hasWaste) {
+    stripes.push({
+      id: "waste-right",
+      kind: "waste",
+      widthMm: waste_per_side_mm,
+      widthPercent: pct(waste_per_side_mm),
+      position: position++,
+      ordinal: 2,
+    });
+  }
+
+  const groups: StripeGroup[] = samples.map((sample, sampleIndex) => ({
+    id: `sample-${sampleIndex}`,
+    kind: "sample",
+    sampleIndex,
+    title: `Образец ${sampleIndex + 1}`,
+    widthMm: sample.width,
+    totalRolls: sample.total,
+    perCycle: sample.per_cycle,
+    rollLengthM: roll_length_m,
+    rollAreaM2: rollArea(sample.width),
+    widthPercent: pct(sample.width),
+    tone: "sample",
+    statusLabel: "Образец",
+  }));
+
+  if (hasWaste) {
+    groups.push({
+      id: "waste",
+      kind: "waste",
+      title: "Кромка (обрез)",
+      widthMm: waste_per_side_mm,
+      totalRolls: 0,
+      perCycle: 2,
+      rollLengthM: roll_length_m,
+      rollAreaM2: rollArea(waste_per_side_mm),
+      widthPercent: pct(waste_per_side_mm * 2),
+      tone: "danger",
+      statusLabel: "Отход",
+    });
+  }
+
+  const cutStrips = samples.reduce((n, s) => n + s.per_cycle, 0);
   const knifeCount = cutStrips > 0 ? cutStrips + 1 : 0;
 
   return {

@@ -255,6 +255,83 @@ function RollResultTile({
   );
 }
 
+/** Colour badge per additional size — kept in sync with the cutting scheme:
+ *  доп#1 = blue (primary), доп#2 = indigo (a distinct, richer blue). */
+const SIZE_BADGE: Record<"additional" | "additional2", string> = {
+  additional: "bg-primary text-primary-foreground",
+  additional2: "bg-indigo-500 text-white",
+};
+
+interface AdditionalSizeRow {
+  tone: "additional" | "additional2";
+  widthMm: number;
+  count: number;
+}
+
+/**
+ * Per-size breakdown of the additional rolls, taken verbatim from the raskroy
+ * result (never the raw params): one entry per additional size that is actually
+ * produced (count > 0). доп#1 first, доп#2 second. Sizes are never summed here —
+ * the operator must see each size's own count. An empty list means «no
+ * additional sizes» and the callers render a dash instead of a fake «0».
+ */
+function additionalSizeRows(plan: ProductionVM["plan"]): AdditionalSizeRow[] {
+  if (!plan) {
+    return [];
+  }
+  const rows: AdditionalSizeRow[] = [];
+  if (plan.additional_width_mm && plan.total_additional_rolls_1 > 0) {
+    rows.push({ tone: "additional", widthMm: plan.additional_width_mm, count: plan.total_additional_rolls_1 });
+  }
+  if (plan.additional_width_mm_2 && plan.total_additional_rolls_2 > 0) {
+    rows.push({ tone: "additional2", widthMm: plan.additional_width_mm_2, count: plan.total_additional_rolls_2 });
+  }
+  return rows;
+}
+
+/** One «N шт. [W мм]» line: the count, then the colour-coded size badge. */
+function SizeCountLine({ row }: { row: AdditionalSizeRow }) {
+  return (
+    // Wrap only between the count and the badge (never inside a token), so in a
+    // narrow result cell the badge drops to its own line instead of breaking
+    // "104 мм" across two lines.
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <span className={cn(AppTypography.footnote, "whitespace-nowrap tabular-nums font-semibold")}>{row.count} шт.</span>
+      <span
+        className={cn(
+          "inline-flex whitespace-nowrap rounded px-1 py-0.5 text-[10px] font-semibold leading-none",
+          SIZE_BADGE[row.tone],
+        )}
+      >
+        {row.widthMm} мм
+      </span>
+    </div>
+  );
+}
+
+/**
+ * AdditionalRollsTile — the «Рулонов (доп.)» result cell. Instead of one summed
+ * number it lists each additional size with its own count and colour badge, so
+ * the operator sees доп#1 and доп#2 separately. No sizes → a single dash; one
+ * size → one line; two sizes → two visually separated lines. Compact by design.
+ */
+function AdditionalRollsTile({ label, rows }: { label: string; rows: AdditionalSizeRow[] }) {
+  return (
+    <div className="rounded-lg border border-card-border bg-card/60 px-2.5 py-1.5">
+      <div className={cn(AppTypography.caption, "truncate text-muted-foreground")}>{label}</div>
+      {rows.length === 0 ? (
+        <div className={cn(AppTypography.subheadline, "tabular-nums")}>—</div>
+      ) : (
+        <div className="mt-0.5 space-y-0.5">
+          {rows.map((row) => (
+            <SizeCountLine key={row.tone} row={row} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A compact labelled field cell — value shown read-only or as an input. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -637,6 +714,10 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
     additionalToWarehouse,
     reservedNext,
   } = deriveMachineStats(vm);
+  // Per-size breakdown for the «Доп. рулоны на склад» card — only when the
+  // additional rolls are actually routed to the warehouse; otherwise empty so
+  // the card shows a dash rather than a misleading count.
+  const additionalWarehouseRows = additionalToWarehouse > 0 ? additionalSizeRows(plan) : [];
 
   // Single source of truth for the start button (vm.canStart) — this only
   // surfaces which required field is still missing.
@@ -907,12 +988,7 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                     widthMm={plan ? plan.roll_width_mm : null}
                     tone="main"
                   />
-                  <RollResultTile
-                    label="Рулонов (доп.)"
-                    count={plan ? plan.total_additional_rolls : 0}
-                    widthMm={plan && plan.additional_width_mm ? plan.additional_width_mm : null}
-                    tone="additional"
-                  />
+                  <AdditionalRollsTile label="Рулонов (доп.)" rows={additionalSizeRows(plan)} />
                   <Tile label="Использовано" value={plan ? formatMeters(plan.used_length_m) : "—"} />
                 </div>
               </CardView>
@@ -1062,8 +1138,16 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                     <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Доп. рулоны на склад</span>
                     <PackageSearch className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
-                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>{additionalToWarehouse}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>шт. · по текущему расчёту</div>
+                  {additionalWarehouseRows.length === 0 ? (
+                    <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>—</div>
+                  ) : (
+                    <div className="mt-1 space-y-0.5">
+                      {additionalWarehouseRows.map((row) => (
+                        <SizeCountLine key={row.tone} row={row} />
+                      ))}
+                    </div>
+                  )}
+                  <div className={cn(AppTypography.caption, "mt-1 text-muted-foreground")}>по текущему расчёту</div>
                 </CardView>
               </div>
             </div>

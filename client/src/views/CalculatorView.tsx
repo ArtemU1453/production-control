@@ -9,6 +9,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { CardView, ScreenScaffold } from "@/components";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ export function CalculatorView() {
   const { toast } = useToast();
 
   const values = form.watch();
+  const samplesMode = form.watch("samplesMode") ?? false;
   const model = useMemo(() => (plan ? buildCuttingModel(plan) : null), [plan]);
 
   const [activeKind, setActiveKind] = useState<StripeKind | null>(null);
@@ -216,29 +218,54 @@ export function CalculatorView() {
 
                   <Separator />
 
+                  {/* «Образцы» mode — cut a list of sample widths in equal quantity. */}
+                  <FormField
+                    control={form.control}
+                    name="samplesMode"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center justify-between gap-3 rounded-xl border border-card-border px-3 py-2">
+                        <div className="min-w-0">
+                          <FormLabel className="text-xs">Образцы</FormLabel>
+                          <div className={cn(AppTypography.caption2, "text-muted-foreground")}>
+                            Равное количество каждого размера
+                          </div>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={Boolean(field.value)}
+                            onCheckedChange={field.onChange}
+                            aria-label="Режим образцов"
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
                   <div className={cn(AppTypography.caption2, "text-muted-foreground")}>Готовый рулон</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
-                      name="rollWidthMm"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">Ширина, мм</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              value={field.value ?? ""}
-                              inputMode="decimal"
-                              type="number"
-                              step="0.1"
-                              className={INPUT_CLASS}
-                              placeholder="Введите ширину"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <div className={cn("grid gap-3", samplesMode ? "grid-cols-1" : "grid-cols-2")}>
+                    {!samplesMode ? (
+                      <FormField
+                        control={form.control}
+                        name="rollWidthMm"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Ширина, мм</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                value={field.value ?? ""}
+                                inputMode="decimal"
+                                type="number"
+                                step="0.1"
+                                className={INPUT_CLASS}
+                                placeholder="Введите ширину"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : null}
                     <FormField
                       control={form.control}
                       name="rollLengthM"
@@ -261,27 +288,49 @@ export function CalculatorView() {
                     />
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="additionalWidthMm"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Фиксированный доп. размер (опц.), мм</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            value={field.value ?? ""}
-                            inputMode="decimal"
-                            type="number"
-                            step="0.1"
-                            className={INPUT_CLASS}
-                            placeholder="Автоматически"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {samplesMode ? (
+                    <FormField
+                      control={form.control}
+                      name="sampleWidths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Ширины образцов (через запятую), мм</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="decimal"
+                              className={INPUT_CLASS}
+                              placeholder="напр. 104, 60, 30"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <FormField
+                      control={form.control}
+                      name="additionalWidthMm"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Фиксированный доп. размер (опц.), мм</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={field.value ?? ""}
+                              inputMode="decimal"
+                              type="number"
+                              step="0.1"
+                              className={INPUT_CLASS}
+                              placeholder="Автоматически"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </form>
               </Form>
             </CardView>

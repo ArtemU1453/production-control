@@ -14,4 +14,8 @@ export interface CuttingOrderInput {
   /** Whether additional sizes are auto-detected (true/undefined) or entered
    *  manually (false). Absent on legacy orders → treated as auto. */
   additionalAuto?: boolean;
+  /** «Образцы» mode — cut the sample widths below in equal quantity. */
+  samplesMode?: boolean;
+  /** Sample widths (мм) to cut in equal quantity when {@link samplesMode}. */
+  sampleWidthsMm?: number[];
 }

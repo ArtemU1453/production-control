@@ -30,6 +30,8 @@ export function createCalculationService(): CalculationService {
         input.additionalWidthMm ?? null,
         input.additionalWidthMm2 ?? null,
         input.additionalAuto ?? true,
+        input.samplesMode ?? false,
+        input.sampleWidthsMm ?? null,
       );
     },
   };

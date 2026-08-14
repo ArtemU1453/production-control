@@ -7,6 +7,7 @@ import type { CuttingOrderInput } from "@/models";
 import {
   calculatorDefaults,
   calculatorSchema,
+  parseSampleWidths,
   type CalculatorFormValues,
 } from "./calculatorSchema";
 
@@ -18,14 +19,19 @@ interface CalculatorViewModel {
 }
 
 export function toCalculatorInput(values: CalculatorFormValues): CuttingOrderInput {
+  const samplesMode = values.samplesMode ?? false;
   return {
     materialWidthMm: values.materialWidthMm,
     usefulWidthMm: values.usefulWidthMm,
-    rollWidthMm: values.rollWidthMm,
+    // In samples mode the single roll width is unused by the engine; pass 0 as a
+    // harmless placeholder so the type stays a number.
+    rollWidthMm: values.rollWidthMm ?? 0,
     rollLengthM: values.rollLengthM,
     bigRollLengthM: values.bigRollLengthM,
     orderRolls: values.orderRolls,
-    additionalWidthMm: values.additionalWidthMm,
+    additionalWidthMm: samplesMode ? undefined : values.additionalWidthMm,
+    samplesMode,
+    sampleWidthsMm: samplesMode ? parseSampleWidths(values.sampleWidths) : undefined,
   };
 }
 

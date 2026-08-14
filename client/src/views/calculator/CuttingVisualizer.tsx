@@ -22,6 +22,7 @@ interface CuttingVisualizerProps {
 const KIND_LABEL: Record<StripeKind, string> = {
   main: "Основная",
   additional: "Доп.",
+  additional2: "Доп. 2",
   waste: "Отход",
 };
 
@@ -30,10 +31,10 @@ const KIND_LABEL: Record<StripeKind, string> = {
  *
  * It shows the full Jumbo width as a dark, rounded card bounded by thin red trim
  * lines (the waste edges), filled with one rounded chip per cut lane: light-grey
- * for main lanes, blue for the additional lane. Each chip's width is proportional
- * to its physical width where space allows; chips wrap into several rows on
- * narrow screens instead of ever scrolling horizontally. A dynamic legend below
- * names only the kinds actually present.
+ * for main lanes, blue for the first additional lane and indigo for the second.
+ * The chips are laid out in two staggered (brick) rows; each chip shows its
+ * physical width in millimetres. A dynamic legend below names only the kinds
+ * actually present.
  *
  * Purely presentational — it renders the {@link CuttingModel} the engine already
  * produced and computes no production figures.
@@ -87,6 +88,7 @@ export function CuttingVisualizer({
   const hasWaste = wasteGroup !== null;
   const mainGroup = groups.find((g) => g.id === "main") ?? null;
   const additionalGroup = groups.find((g) => g.id === "additional") ?? null;
+  const additionalGroup2 = groups.find((g) => g.id === "additional2") ?? null;
 
   // Trim edge: a thin red bar (roomy) or, on the compact production card, a small
   // labelled red block ("ОТХОД / N мм") on each side per the operator spec.
@@ -112,25 +114,43 @@ export function CuttingVisualizer({
   // than the top (a single roll shows one row). Chips shrink to fit narrow
   // screens; the scheme never collapses to one long row or grows a third row.
   // Waste is not part of this — the trimmed edges are separate red elements
-  // flanking the block. Columns share a fixed width so the two rows align, and a
-  // shorter bottom row stays left-aligned with the right side left empty.
+  // flanking the block.
+  //
+  // The two rows are STAGGERED (шахматное/кирпичное смещение): the top row is
+  // flush-left, the bottom row is shifted right by half a chip + one gap so its
+  // chips sit centred between the top row's chips. Every chip shares one fixed
+  // width so the offset lands cleanly. The width is sized to whichever row is
+  // widest once the offset is added: for an even total the offset bottom row is
+  // the constraint; for an odd total (top has one extra chip) the top row is.
+  // This holds for any count, even or odd, and never overflows the web.
   const layout = useMemo(() => {
     const items = laneChips;
     if (items.length === 0) {
       return null;
     }
     const rows = distributeRollsIntoRows(items, 2).filter((row) => row.length > 0);
-    const columns = rows[0].length; // top row = ceil(n/2) = column count
-    return { rows, columns };
-  }, [laneChips]);
+    const topCount = rows[0].length; // ceil(n/2)
+    const bottomCount = rows[1]?.length ?? 0; // floor(n/2)
+    const even = topCount === bottomCount;
+    const widthExpr = even
+      ? `(100% - ${bottomCount * gapPx}px) / ${bottomCount + 0.5}`
+      : `(100% - ${(topCount - 1) * gapPx}px) / ${topCount}`;
+    const chipWidth = `calc(${widthExpr})`;
+    // ½ chip + one inter-chip gap → the brick offset for the bottom row.
+    const offset = `calc((${widthExpr}) / 2 + ${gapPx}px)`;
+    return { rows, chipWidth, offset };
+  }, [laneChips, gapPx]);
 
   const kindChipClass: Record<Exclude<StripeKind, "waste">, string> = {
     main: "bg-slate-300 text-slate-900",
     additional: "bg-primary text-primary-foreground",
+    // Distinct indigo/violet so доп#2 is never confused with доп#1 (blue).
+    additional2: "bg-indigo-500 text-white",
   };
   const kindDotClass: Record<StripeKind, string> = {
     main: "bg-slate-300",
     additional: "bg-primary",
+    additional2: "bg-indigo-500",
     waste: "bg-destructive",
   };
 
@@ -153,7 +173,12 @@ export function CuttingVisualizer({
         >
           {layout
             ? layout.rows.map((rowItems, rowIndex) => (
-                <div key={rowIndex} className="flex flex-nowrap items-stretch justify-start" style={{ gap: gapPx }}>
+                <div
+                  key={rowIndex}
+                  className="flex flex-nowrap items-stretch justify-start"
+                  // Bottom row is offset half a chip + a gap → staggered/brick rows.
+                  style={{ gap: gapPx, marginLeft: rowIndex === 1 ? layout.offset : undefined }}
+                >
                   {rowItems.map((chip) => {
                     const kind = chip.kind as Exclude<StripeKind, "waste">;
                     const isActive = activeKind === kind;
@@ -164,11 +189,9 @@ export function CuttingVisualizer({
                         onMouseEnter={() => onActiveKindChange(kind)}
                         onMouseLeave={() => onActiveKindChange(null)}
                         title={`${KIND_LABEL[kind]} — ${formatMm(chip.widthMm)}`}
-                        // Fixed column width so every row aligns; a short last row
-                        // stays left-aligned and leaves the right empty.
-                        style={{
-                          width: `calc((100% - ${(layout.columns - 1) * gapPx}px) / ${layout.columns})`,
-                        }}
+                        // Fixed chip width shared by both rows so the offset bottom
+                        // row staggers cleanly against the top row.
+                        style={{ width: layout.chipWidth }}
                         className={cn(
                           "flex min-w-0 flex-col items-center justify-center overflow-hidden rounded-md text-center leading-none transition-opacity",
                           ui.chip,
@@ -209,6 +232,16 @@ export function CuttingVisualizer({
             label={`Доп. ${formatMm(additionalGroup.widthMm)}`}
             dim={activeKind !== null && activeKind !== "additional"}
             onEnter={() => onActiveKindChange("additional")}
+            onLeave={() => onActiveKindChange(null)}
+          />
+        ) : null}
+        {additionalGroup2 ? (
+          <LegendItem
+            dotClass={kindDotClass.additional2}
+            dotSize={ui.dot}
+            label={`Доп. 2 ${formatMm(additionalGroup2.widthMm)}`}
+            dim={activeKind !== null && activeKind !== "additional2"}
+            onEnter={() => onActiveKindChange("additional2")}
             onLeave={() => onActiveKindChange(null)}
           />
         ) : null}

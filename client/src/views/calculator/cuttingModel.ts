@@ -13,7 +13,7 @@ import type { CalcResult } from "@/services";
  * engine result.
  */
 
-export type StripeKind = "main" | "additional" | "waste";
+export type StripeKind = "main" | "additional" | "additional2" | "waste";
 
 /** A single vertical band in the cross-section visualisation. */
 export interface Stripe {
@@ -45,7 +45,7 @@ export interface StripeGroup {
   rollAreaM2: number;
   /** Share of the material width, 0…100 — display ratio only. */
   widthPercent: number;
-  tone: "primary" | "accent" | "danger";
+  tone: "primary" | "accent" | "accent2" | "danger";
   statusLabel: string;
 }
 
@@ -90,6 +90,9 @@ export function distributeRollsIntoRows<T>(items: readonly T[], rows: number): T
 export const STRIPE_FILL: Record<StripeKind, string> = {
   main: "hsl(var(--primary))",
   additional: "hsl(var(--accent))",
+  // A distinct indigo/violet so the second additional size never blends into
+  // the first (blue) — kept in sync with CuttingVisualizer's chip/dot classes.
+  additional2: "#6366f1",
   waste: "hsl(var(--destructive))",
 };
 
@@ -107,10 +110,12 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
     main_count,
     roll_width_mm,
     additional_width_mm,
+    additional_width_mm_2,
     waste_per_side_mm,
     roll_length_m,
     total_main_rolls,
-    total_additional_rolls,
+    total_additional_rolls_1,
+    total_additional_rolls_2,
   } = plan;
 
   const pct = (widthMm: number) =>
@@ -155,6 +160,20 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
     });
   }
 
+  // Second additional size — the engine cuts it from the width left after the
+  // first additional lane, so it sits immediately after «additional» and before
+  // the right trim. One lane per cycle, like the first.
+  if (additional_width_mm_2 && additional_width_mm_2 > 0) {
+    stripes.push({
+      id: "additional2",
+      kind: "additional2",
+      widthMm: additional_width_mm_2,
+      widthPercent: pct(additional_width_mm_2),
+      position: position++,
+      ordinal: 1,
+    });
+  }
+
   if (hasWaste) {
     stripes.push({
       id: "waste-right",
@@ -188,13 +207,28 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
       id: "additional",
       title: "Доп. ручей",
       widthMm: additional_width_mm,
-      totalRolls: total_additional_rolls,
+      totalRolls: total_additional_rolls_1,
       perCycle: 1,
       rollLengthM: roll_length_m,
       rollAreaM2: rollArea(additional_width_mm),
       widthPercent: pct(additional_width_mm),
       tone: "accent",
       statusLabel: "Доп. размер",
+    });
+  }
+
+  if (additional_width_mm_2 && additional_width_mm_2 > 0) {
+    groups.push({
+      id: "additional2",
+      title: "Доп. ручей 2",
+      widthMm: additional_width_mm_2,
+      totalRolls: total_additional_rolls_2,
+      perCycle: 1,
+      rollLengthM: roll_length_m,
+      rollAreaM2: rollArea(additional_width_mm_2),
+      widthPercent: pct(additional_width_mm_2),
+      tone: "accent2",
+      statusLabel: "Доп. размер 2",
     });
   }
 
@@ -216,7 +250,10 @@ export function buildCuttingModel(plan: CalcResult): CuttingModel {
   // Knives sit between adjacent cut strips (main + additional). Two trimmed
   // edges add two outer blade positions. This is a count of the boundaries in
   // the arrangement above — not an engine quantity.
-  const cutStrips = main_count + (additional_width_mm && additional_width_mm > 0 ? 1 : 0);
+  const cutStrips =
+    main_count +
+    (additional_width_mm && additional_width_mm > 0 ? 1 : 0) +
+    (additional_width_mm_2 && additional_width_mm_2 > 0 ? 1 : 0);
   const knifeCount = cutStrips > 0 ? cutStrips + 1 : 0;
 
   return {

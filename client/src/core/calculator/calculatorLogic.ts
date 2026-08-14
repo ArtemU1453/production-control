@@ -401,14 +401,64 @@ export function calculate(
 }
 
 /**
- * «Образцы» (samples) mode — cuts a set of sample widths in **equal quantity**.
+ * Stage 2 of «Образцы»: given the width left free after the equal base batch,
+ * pick EXTRA copies of the allowed sample widths (repetition allowed, only the
+ * operator's own widths) that fill the free width as tightly as possible —
+ * minimising the leftover. This is an unbounded knapsack where each item's value
+ * equals its width, solved with DP over the capacity in tenths of a millimetre
+ * (so 0.1 mm sample widths are honoured). Returns the extra count per width,
+ * aligned with `widths`; an all-zero array when nothing fits or helps.
  *
- * Rule: across the useful width we place the same number `m` of every sample.
- * `m = floor(useful_width / Σ widths)`. If not even one of each fits
- * (Σ widths > useful_width), we DROP the smallest width and retry — never round
- * counts — until the remaining widths fit; every surviving sample then keeps an
- * identical count. Length/cycle/area maths mirror the normal engine so the rest
- * of the UI (KPIs, waste, remaining Jumbo) stays consistent.
+ * Bounded and fast: capacity < Σ widths ≤ useful width (≤ ~9100 tenths) and the
+ * item set is the sample list, so the DP is at most a few tens of thousands of
+ * steps — no unbounded search.
+ */
+function _fill_remaining_width(free_mm: number, widths: number[]): number[] {
+  const SCALE = 10;
+  const n = widths.length;
+  const extras = new Array<number>(n).fill(0);
+  const cap = Math.floor(free_mm * SCALE);
+  if (cap <= 0 || n === 0) {
+    return extras;
+  }
+  const w = widths.map((x) => Math.round(x * SCALE));
+  // best[c] = max fill ≤ c; pick[c] = width index chosen to reach best[c].
+  const best = new Int32Array(cap + 1);
+  const pick = new Int32Array(cap + 1).fill(-1);
+  for (let c = 1; c <= cap; c++) {
+    for (let i = 0; i < n; i++) {
+      const wi = w[i];
+      if (wi > 0 && wi <= c) {
+        const candidate = best[c - wi] + wi;
+        if (candidate > best[c]) {
+          best[c] = candidate;
+          pick[c] = i;
+        }
+      }
+    }
+  }
+  let c = cap;
+  while (c > 0 && pick[c] !== -1) {
+    const i = pick[c];
+    extras[i] += 1;
+    c -= w[i];
+  }
+  return extras;
+}
+
+/**
+ * «Образцы» (samples) mode — two-stage layout.
+ *
+ * Stage 1 (equal base): place the same number `m` of every sample across the
+ * useful width, `m = floor(useful_width / Σ widths)`. If not even one of each
+ * fits, DROP the smallest width and retry — never round counts — until the rest
+ * fit; every surviving sample keeps the SAME base count.
+ *
+ * Stage 2 (fill the remainder): the width left free after the base batch is
+ * filled with EXTRA copies of the same allowed widths (see
+ * {@link _fill_remaining_width}) to minimise waste. Extras need not be equal, so
+ * final per-sample counts may differ — equality is the starting point, not a
+ * hard cap. Length/cycle/area maths mirror the normal engine.
  */
 function _calculate_samples(
   material_width_mm: number,
@@ -445,8 +495,14 @@ function _calculate_samples(
   }
 
   const widths_sum = sum(widths);
-  const per_cycle = Math.floor(useful_width_mm / widths_sum); // ≥ 1 by construction
-  const strips_per_cycle = per_cycle * widths.length;
+  // Stage 1 — equal base count for every sample.
+  const base_per_cycle = Math.floor(useful_width_mm / widths_sum); // ≥ 1 by construction
+  // Stage 2 — fill the width left free after the base batch with extra copies.
+  const free_width_mm = useful_width_mm - widths_sum * base_per_cycle;
+  const extras = _fill_remaining_width(free_width_mm, widths);
+  // Final per-sample count per cycle = equal base + optimisation extras.
+  const per_cycle_counts = widths.map((_, i) => base_per_cycle + extras[i]);
+  const strips_per_cycle = per_cycle_counts.reduce((s, c) => s + c, 0);
 
   const available_length_m = big_roll_length_m - SETUP_LENGTH_M;
   if (available_length_m < roll_length_m) {
@@ -458,9 +514,12 @@ function _calculate_samples(
   const cycles_needed = Math.ceil(order_rolls / strips_per_cycle);
   const cycles_used = Math.min(cycles_needed, length_count);
 
-  const per_sample_total = per_cycle * cycles_used;
-  const sample_groups = widths.map((w) => ({ width: w, per_cycle, total: per_sample_total }));
-  const total_rolls = per_sample_total * widths.length;
+  const sample_groups = widths.map((w, i) => ({
+    width: w,
+    per_cycle: per_cycle_counts[i],
+    total: per_cycle_counts[i] * cycles_used,
+  }));
+  const total_rolls = sample_groups.reduce((s, g) => s + g.total, 0);
 
   const length_rate = _cycles_per_hour_by_length(roll_length_m);
   const cycles_per_hour = length_rate;
@@ -475,7 +534,7 @@ function _calculate_samples(
     used_length_m = big_roll_length_m;
   }
 
-  const used_width_mm = widths_sum * per_cycle;
+  const used_width_mm = widths.reduce((s, w, i) => s + w * per_cycle_counts[i], 0);
   const total_area_m2 = (material_width_mm / 1000) * used_length_m;
   const useful_area_m2 = (used_width_mm / 1000) * (cycles_used * roll_length_m);
   const waste_area_m2 = total_area_m2 - useful_area_m2;

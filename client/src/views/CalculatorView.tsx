@@ -145,19 +145,29 @@ export function CalculatorView() {
                     control={form.control}
                     name="orderRolls"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Заказ, шт</FormLabel>
+                      <FormItem className="space-y-1">
+                        <FormLabel className={cn("text-xs", samplesMode && "text-muted-foreground/60")}>
+                          Заказ, шт
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             value={field.value ?? ""}
                             inputMode="numeric"
                             type="number"
-                            className={INPUT_CLASS}
+                            disabled={samplesMode}
+                            title={samplesMode ? "Не используется в режиме образцов" : undefined}
+                            className={cn(INPUT_CLASS, samplesMode && "opacity-60")}
                             placeholder="Введите количество"
                           />
                         </FormControl>
-                        <FormMessage />
+                        {samplesMode ? (
+                          <p className={cn(AppTypography.caption2, "text-muted-foreground")}>
+                            Не используется в режиме образцов
+                          </p>
+                        ) : (
+                          <FormMessage />
+                        )}
                       </FormItem>
                     )}
                   />

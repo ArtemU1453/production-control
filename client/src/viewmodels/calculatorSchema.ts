@@ -36,7 +36,10 @@ export const calculatorSchema = z
       .transform((v) => (v === "" ? undefined : (v as number | undefined))),
     rollLengthM: z.coerce.number().min(30).max(1100),
     bigRollLengthM: z.coerce.number().min(30).max(22000),
-    orderRolls: z.coerce.number().int().positive().min(1),
+    orderRolls: z
+      .union([z.coerce.number().int().positive().min(1), z.literal("")])
+      .optional()
+      .transform((v) => (v === "" ? undefined : (v as number | undefined))),
     additionalWidthMm: z
       .union([z.coerce.number().min(20).max(310), z.literal("")])
       .optional()
@@ -74,13 +77,22 @@ export const calculatorSchema = z
           path: ["sampleWidths"],
         });
       }
-    } else if (val.rollWidthMm === undefined) {
-      // Outside samples mode the single roll width is required as before.
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Введите ширину рулона.",
-        path: ["rollWidthMm"],
-      });
+    } else {
+      // Outside samples mode the single roll width and the order are required.
+      if (val.rollWidthMm === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Введите ширину рулона.",
+          path: ["rollWidthMm"],
+        });
+      }
+      if (val.orderRolls === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Введите количество заказа.",
+          path: ["orderRolls"],
+        });
+      }
     }
   });
 

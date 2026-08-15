@@ -465,10 +465,11 @@ function _fill_remaining_width(free_mm: number, widths: number[]): number[] {
  * {@link _fill_remaining_width}) to reduce waste WITHOUT breaking equality — the
  * per-cycle counts differ by at most one.
  *
- * The «Заказ» (order quantity) is IGNORED in samples mode: how many of each
- * sample come out is decided purely by the raskroy — the Jumbo width (the
- * per-cycle cross-section) and the Jumbo length (how many cycles fit). The order
- * field only drives the normal (non-samples) mode.
+ * The result describes ONE cutting map (a single run), not a production forecast
+ * from the whole Jumbo winding: each sample's quantity is the number of rolls in
+ * that one map (its per-cycle count). Neither «Заказ» (order quantity) nor the
+ * Jumbo winding length affect the sample counts — only the Jumbo width and the
+ * sample sizes do. The order field drives the normal (non-samples) mode only.
  */
 function _calculate_samples(
   material_width_mm: number,
@@ -521,15 +522,17 @@ function _calculate_samples(
   const length_count = Math.floor(available_length_m / roll_length_m);
   const length_waste_m = available_length_m - length_count * roll_length_m;
 
-  // «Заказ» не влияет на образцы: используем всю доступную длину Джамбы —
-  // количество каждого образца = per_cycle × число помещающихся циклов.
-  const cycles_used = length_count;
-  const cycles_needed = length_count;
+  // Режим «Образцы» показывает ОДНУ карту раскроя (один запуск), а не прогноз
+  // производства из всей намотки. Поэтому количество каждого образца — это
+  // число рулонов в одной карте (per_cycle), а не per_cycle × число циклов.
+  // Ни «Заказ», ни длина намотки Джамбы на количество образцов не влияют.
+  const cycles_used = 1;
+  const cycles_needed = 1;
 
   const sample_groups = widths.map((w, i) => ({
     width: w,
     per_cycle: per_cycle_counts[i],
-    total: per_cycle_counts[i] * cycles_used,
+    total: per_cycle_counts[i], // одна карта раскроя
   }));
   const total_rolls = sample_groups.reduce((s, g) => s + g.total, 0);
 
@@ -537,9 +540,11 @@ function _calculate_samples(
   const cycles_per_hour = length_rate;
   const estimated_hours = cycles_per_hour ? cycles_needed / cycles_per_hour + 0.25 : null;
 
-  const used_length_m = cycles_used * roll_length_m + SETUP_LENGTH_M;
+  // One cutting map = one roll length. No setup length is amortised here, so the
+  // waste figures reflect the cross-section (edge trim), not a length overhead.
+  const used_length_m = roll_length_m;
   const remaining_jumbo_m = Math.max(0, big_roll_length_m - used_length_m);
-  // No order in samples mode → no order-driven shortage.
+  // No order / no namotka projection in samples mode → no shortage.
   const shortage_cycles = 0;
   const shortage_length_m = 0;
   const shortage_rolls = 0;

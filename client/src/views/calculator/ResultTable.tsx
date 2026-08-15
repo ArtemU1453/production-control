@@ -36,7 +36,7 @@ export function ResultTable({
       <div className="hidden overflow-hidden rounded-2xl border border-card-border md:block">
         <div
           className={cn(
-            "grid bg-muted/50 px-3 py-2",
+            "grid bg-muted/50 px-3 py-1.5",
             COLUMNS,
             AppTypography.caption2,
             "text-muted-foreground",
@@ -58,7 +58,7 @@ export function ResultTable({
               onMouseEnter={() => onActiveKindChange(group.kind)}
               onMouseLeave={() => onActiveKindChange(null)}
               className={cn(
-                "grid items-center border-t border-card-border px-3 py-2.5 transition-colors",
+                "grid items-center border-t border-card-border px-3 py-1.5 transition-colors",
                 COLUMNS,
                 AppTypography.footnote,
                 "tabular-nums",

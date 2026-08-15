@@ -15,7 +15,7 @@ import {
 import type { CalcResult, CompleteCalculationOutcome } from "@/services";
 import { AuditAction } from "@/admin";
 import { makeId } from "@/utilities/id";
-import { computeTechScrap } from "@/core/production/techScrap";
+import { computeTechScrap, TECH_CYCLE_DISPLAY_M } from "@/core/production/techScrap";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -701,7 +701,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
         setOrderSummary(null);
         // Journal: current Jumbo fully used → next connected → production resumes.
         const switchAt = new Date().toISOString();
-        const changeScrap = computeTechScrap({ started: true, jumboChanges: 1, finished: false });
         setProductionLog((log) => [
           {
             id: makeId(),
@@ -717,7 +716,7 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
             kind: "tech",
             at: switchAt,
             note: "Заправка при замене Джамбо",
-            meters: changeScrap.changesM,
+            meters: TECH_CYCLE_DISPLAY_M,
             operator: order.operator || undefined,
             jumboStockNumber: next.stockNumber,
           },
@@ -900,15 +899,14 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
       machines.includes(order.machine) ? machines : [...machines, order.machine],
     );
     const at = new Date().toISOString();
-    const startupScrap = computeTechScrap({ started: true, jumboChanges: 0, finished: false });
     setProductionLog((log) => [
-      // Технический цикл: запуск и заправка линии — считается автоматически.
+      // Технический цикл: запуск и заправка линии — всегда 10 м в журнале.
       {
         id: makeId(),
         kind: "tech",
         at,
         note: "Запуск и настройка линии",
-        meters: startupScrap.startupM + startupScrap.setupM,
+        meters: TECH_CYCLE_DISPLAY_M,
         operator: order.operator || undefined,
         jumboStockNumber: selectedJumbo?.stockNumber,
       },
@@ -1104,10 +1102,9 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
         });
 
         // Технический цикл завершения (подрезка/переход) + запись о завершении.
-        const finishTech = computeTechScrap({ started: true, jumboChanges: priorSteps.length, finished: true });
         setProductionLog((log) => [
           { id: makeId(), kind: "finish", at: new Date().toISOString(), note: "Производство завершено", operator: order.operator || undefined },
-          { id: makeId(), kind: "tech", at: new Date().toISOString(), note: "Завершение и переход", meters: finishTech.finishM, operator: order.operator || undefined },
+          { id: makeId(), kind: "tech", at: new Date().toISOString(), note: "Завершение и переход", meters: TECH_CYCLE_DISPLAY_M, operator: order.operator || undefined },
           ...log,
         ]);
         setBusyMachines((machines) => machines.filter((m) => m !== machine));

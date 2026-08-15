@@ -19,6 +19,14 @@ export const JUMBO_CHANGE_SCRAP_M = 20;
 /** Trim/transition waste when the order is completed, in metres. */
 export const FINISH_TRIM_SCRAP_M = 10;
 
+/**
+ * Fixed length shown in the operations journal for every «Технический цикл»
+ * entry (start-up, Jumbo change, finish). Per the operator spec a technical
+ * cycle is always reported as 10 m in the journal, independent of the internal
+ * scrap breakdown above.
+ */
+export const TECH_CYCLE_DISPLAY_M = 10;
+
 export interface TechScrapInput {
   /** Production has been started (line start-up + setup applied). */
   started: boolean;

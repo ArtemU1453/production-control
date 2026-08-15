@@ -59,7 +59,7 @@ import {
   machineTitle,
   type Jumbo,
 } from "@/models";
-import { formatArea, formatMeters } from "@/extensions/number";
+import { formatMeters } from "@/extensions/number";
 import { formatLocalDate, formatLocalTime } from "@/extensions/date";
 import { useClock } from "@/hooks/useClock";
 import { useProductionViewModel, type ProductionLogEntry } from "@/viewmodels";
@@ -711,13 +711,8 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
   const {
     remainderPct,
     yieldPercent,
-    additionalToWarehouse,
     reservedNext,
   } = deriveMachineStats(vm);
-  // Per-size breakdown for the «Доп. рулоны на склад» card — only when the
-  // additional rolls are actually routed to the warehouse; otherwise empty so
-  // the card shows a dash rather than a misleading count.
-  const additionalWarehouseRows = additionalToWarehouse > 0 ? additionalSizeRows(plan) : [];
 
   // Single source of truth for the start button (vm.canStart) — this only
   // surfaces which required field is still missing.
@@ -1121,35 +1116,6 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                   </div>
                 </div>
               </CardView>
-
-              {/* Bottom stats — only Брак and Доп. рулоны на склад (progress bar
-                  and tech-scrap display removed per the production spec). */}
-              <div className="grid grid-cols-2 gap-3">
-                <CardView className="p-3">
-                  <div className="flex items-center justify-between">
-                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Брак (тек. Джамбо)</span>
-                    <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                  </div>
-                  <div className={cn(AppTypography.title2, "mt-1 tabular-nums text-destructive")}>{vm.activeDefectCount}</div>
-                  <div className={cn(AppTypography.caption, "text-muted-foreground")}>рул. · {formatArea(vm.activeDefectAreaM2)}</div>
-                </CardView>
-                <CardView className="p-3">
-                  <div className="flex items-center justify-between">
-                    <span className={cn(AppTypography.caption2, "text-muted-foreground")}>Доп. рулоны на склад</span>
-                    <PackageSearch className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  {additionalWarehouseRows.length === 0 ? (
-                    <div className={cn(AppTypography.title2, "mt-1 tabular-nums")}>—</div>
-                  ) : (
-                    <div className="mt-1 space-y-0.5">
-                      {additionalWarehouseRows.map((row) => (
-                        <SizeCountLine key={row.tone} row={row} />
-                      ))}
-                    </div>
-                  )}
-                  <div className={cn(AppTypography.caption, "mt-1 text-muted-foreground")}>по текущему расчёту</div>
-                </CardView>
-              </div>
             </div>
           </div>
         </div>

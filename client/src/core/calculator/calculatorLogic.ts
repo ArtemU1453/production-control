@@ -402,16 +402,18 @@ export function calculate(
 
 /**
  * Stage 2 of «Образцы»: given the width left free after the equal base batch,
- * pick EXTRA copies of the allowed sample widths (repetition allowed, only the
- * operator's own widths) that fill the free width as tightly as possible —
- * minimising the leftover. This is an unbounded knapsack where each item's value
- * equals its width, solved with DP over the capacity in tenths of a millimetre
- * (so 0.1 mm sample widths are honoured). Returns the extra count per width,
- * aligned with `widths`; an all-zero array when nothing fits or helps.
+ * add AT MOST ONE extra copy of some subset of the allowed sample widths so the
+ * free width is used as tightly as possible WITHOUT breaking equality. Because
+ * every sample may gain at most one extra per cycle, the per-cycle counts never
+ * differ by more than one (e.g. 3/2/2/2/2, never 6/2/2/2/2) — equality stays the
+ * primary rule and waste is minimised only among the near-equal options.
  *
- * Bounded and fast: capacity < Σ widths ≤ useful width (≤ ~9100 tenths) and the
- * item set is the sample list, so the DP is at most a few tens of thousands of
- * steps — no unbounded search.
+ * This is a 0/1 knapsack where each item's value equals its width, solved with
+ * DP over the capacity in tenths of a millimetre (so 0.1 mm sample widths are
+ * honoured). Returns the extra count (0 or 1) per width, aligned with `widths`.
+ *
+ * Bounded and fast: capacity < Σ widths ≤ useful width (≤ ~9100 tenths) and each
+ * width is considered once, so the DP is at most a few hundred thousand steps.
  */
 function _fill_remaining_width(free_mm: number, widths: number[]): number[] {
   const SCALE = 10;
@@ -422,26 +424,30 @@ function _fill_remaining_width(free_mm: number, widths: number[]): number[] {
     return extras;
   }
   const w = widths.map((x) => Math.round(x * SCALE));
-  // best[c] = max fill ≤ c; pick[c] = width index chosen to reach best[c].
-  const best = new Int32Array(cap + 1);
-  const pick = new Int32Array(cap + 1).fill(-1);
-  for (let c = 1; c <= cap; c++) {
-    for (let i = 0; i < n; i++) {
-      const wi = w[i];
+  // dp[i][c] = max width filled using a subset of the first i widths (each ≤ 1),
+  // within capacity c. 0/1 knapsack (bounded to one extra per sample).
+  const dp: Int32Array[] = Array.from({ length: n + 1 }, () => new Int32Array(cap + 1));
+  for (let i = 1; i <= n; i++) {
+    const wi = w[i - 1];
+    const prev = dp[i - 1];
+    const cur = dp[i];
+    for (let c = 0; c <= cap; c++) {
+      cur[c] = prev[c];
       if (wi > 0 && wi <= c) {
-        const candidate = best[c - wi] + wi;
-        if (candidate > best[c]) {
-          best[c] = candidate;
-          pick[c] = i;
+        const candidate = prev[c - wi] + wi;
+        if (candidate > cur[c]) {
+          cur[c] = candidate;
         }
       }
     }
   }
+  // Reconstruct which widths were taken (each at most once).
   let c = cap;
-  while (c > 0 && pick[c] !== -1) {
-    const i = pick[c];
-    extras[i] += 1;
-    c -= w[i];
+  for (let i = n; i >= 1; i--) {
+    if (dp[i][c] !== dp[i - 1][c]) {
+      extras[i - 1] = 1;
+      c -= w[i - 1];
+    }
   }
   return extras;
 }
@@ -455,10 +461,14 @@ function _fill_remaining_width(free_mm: number, widths: number[]): number[] {
  * fit; every surviving sample keeps the SAME base count.
  *
  * Stage 2 (fill the remainder): the width left free after the base batch is
- * filled with EXTRA copies of the same allowed widths (see
- * {@link _fill_remaining_width}) to minimise waste. Extras need not be equal, so
- * final per-sample counts may differ — equality is the starting point, not a
- * hard cap. Length/cycle/area maths mirror the normal engine.
+ * filled with at most one extra copy of a subset of the allowed widths (see
+ * {@link _fill_remaining_width}) to reduce waste WITHOUT breaking equality — the
+ * per-cycle counts differ by at most one.
+ *
+ * The «Заказ» (order quantity) is IGNORED in samples mode: how many of each
+ * sample come out is decided purely by the raskroy — the Jumbo width (the
+ * per-cycle cross-section) and the Jumbo length (how many cycles fit). The order
+ * field only drives the normal (non-samples) mode.
  */
 function _calculate_samples(
   material_width_mm: number,
@@ -511,8 +521,10 @@ function _calculate_samples(
   const length_count = Math.floor(available_length_m / roll_length_m);
   const length_waste_m = available_length_m - length_count * roll_length_m;
 
-  const cycles_needed = Math.ceil(order_rolls / strips_per_cycle);
-  const cycles_used = Math.min(cycles_needed, length_count);
+  // «Заказ» не влияет на образцы: используем всю доступную длину Джамбы —
+  // количество каждого образца = per_cycle × число помещающихся циклов.
+  const cycles_used = length_count;
+  const cycles_needed = length_count;
 
   const sample_groups = widths.map((w, i) => ({
     width: w,
@@ -525,14 +537,12 @@ function _calculate_samples(
   const cycles_per_hour = length_rate;
   const estimated_hours = cycles_per_hour ? cycles_needed / cycles_per_hour + 0.25 : null;
 
-  let used_length_m = cycles_used * roll_length_m + SETUP_LENGTH_M;
+  const used_length_m = cycles_used * roll_length_m + SETUP_LENGTH_M;
   const remaining_jumbo_m = Math.max(0, big_roll_length_m - used_length_m);
-  const shortage_cycles = Math.max(0, cycles_needed - cycles_used);
-  const shortage_length_m = shortage_cycles * roll_length_m;
-  const shortage_rolls = Math.max(0, order_rolls - total_rolls);
-  if (shortage_rolls > 0) {
-    used_length_m = big_roll_length_m;
-  }
+  // No order in samples mode → no order-driven shortage.
+  const shortage_cycles = 0;
+  const shortage_length_m = 0;
+  const shortage_rolls = 0;
 
   const used_width_mm = widths.reduce((s, w, i) => s + w * per_cycle_counts[i], 0);
   const total_area_m2 = (material_width_mm / 1000) * used_length_m;
@@ -568,7 +578,7 @@ function _calculate_samples(
     total_additional_rolls_1: 0,
     total_additional_rolls_2: 0,
     total_rolls,
-    surplus_rolls: Math.max(0, total_rolls - order_rolls),
+    surplus_rolls: 0,
     surplus_main_rolls: 0,
     surplus_additional_rolls: 0,
     shortage_rolls,

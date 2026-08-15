@@ -28,7 +28,9 @@ export function toCalculatorInput(values: CalculatorFormValues): CuttingOrderInp
     rollWidthMm: values.rollWidthMm ?? 0,
     rollLengthM: values.rollLengthM,
     bigRollLengthM: values.bigRollLengthM,
-    orderRolls: values.orderRolls,
+    // In samples mode «Заказ» is ignored by the engine; pass 1 as a harmless
+    // placeholder so the >0 guard passes even when the (disabled) field is empty.
+    orderRolls: samplesMode ? (values.orderRolls ?? 1) : (values.orderRolls as number),
     additionalWidthMm: samplesMode ? undefined : values.additionalWidthMm,
     samplesMode,
     sampleWidthsMm: samplesMode ? parseSampleWidths(values.sampleWidths) : undefined,

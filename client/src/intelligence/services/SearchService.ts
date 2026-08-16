@@ -65,12 +65,12 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
 
       let orderCount = 0;
       for (const session of sessions) {
-        const hay = `${session.order.orderNumber} ${session.order.customer} ${session.order.operator} ${session.jumboStockNumber} ${session.materialCode}`;
+        const hay = `${session.order.customer} ${session.order.operator} ${session.jumboStockNumber} ${session.materialCode}`;
         if (contains(hay, q)) {
           hits.push({
             kind: SearchResultKind.order,
-            title: `Заказ ${session.order.orderNumber || "без номера"}`,
-            subtitle: `${session.order.customer || "—"} · ${machineTitle(session.order.machine)} · ${session.result.total_rolls} рул.`,
+            title: `${session.order.customer || "Без заказчика"} · Джамб № ${session.jumboStockNumber}`,
+            subtitle: `${session.materialCode} · ${machineTitle(session.order.machine)} · ${session.result.total_rolls} рул.`,
             href: "/history",
           });
           if (++orderCount >= PER_KIND_LIMIT) break;

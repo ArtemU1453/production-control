@@ -124,7 +124,6 @@ export function useFinishedGoodsViewModel() {
           String(roll.lengthM),
           roll.materialCode,
           roll.comment ?? "",
-          roll.orderNumber,
           roll.number,
           roll.jumboStockNumber,
         ]

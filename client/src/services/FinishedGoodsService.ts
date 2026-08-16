@@ -20,7 +20,6 @@ export interface FinishedGoodsJumboShare {
 /** Everything needed to materialize a completed order's good product into the
  *  finished-goods warehouse. Defects are never passed here. */
 export interface FinishedGoodsCompletionInput {
-  orderNumber: string;
   materialId: string;
   materialCode: string;
   widthMm: number;
@@ -166,7 +165,7 @@ export function createFinishedGoodsService(
       const key = input.chainId ?? input.sessionId;
       if (key) {
         const existing = (await finishedRolls.getAll()).filter(
-          (roll) => (roll.chainId ?? roll.sessionId) === key && roll.orderNumber === input.orderNumber,
+          (roll) => (roll.chainId ?? roll.sessionId) === key,
         );
         if (existing.length > 0) {
           return existing;
@@ -204,7 +203,6 @@ export function createFinishedGoodsService(
         const roll: FinishedRoll = {
           id: makeId(),
           number: rollNumber(input.producedAt, base + created.length + 1),
-          orderNumber: input.orderNumber,
           materialId: input.materialId,
           materialCode: input.materialCode,
           widthMm: input.widthMm,
@@ -237,7 +235,6 @@ export function createFinishedGoodsService(
           created.push({
             id: makeId(),
             number: rollNumber(input.producedAt, base + created.length + 1),
-            orderNumber: input.orderNumber,
             materialId: input.materialId,
             materialCode: input.materialCode,
             widthMm: size.widthMm,
@@ -368,7 +365,6 @@ export function createFinishedGoodsService(
       const roll: FinishedRoll = {
         id: makeId(),
         number: rollNumber(producedAt, base + 1),
-        orderNumber: "",
         materialId: input.materialId,
         materialCode: input.materialCode,
         widthMm: input.widthMm,

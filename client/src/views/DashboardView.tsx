@@ -151,12 +151,11 @@ export function DashboardView() {
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground">{formatDateTime(lastSession.createdAt)}</div>
               <div className="text-lg font-semibold">
-                {lastSession.order.orderNumber || "Без номера"}
+                Джамб № {lastSession.jumboStockNumber} · {lastSession.materialCode}
                 {lastSession.order.customer ? ` · ${lastSession.order.customer}` : ""}
               </div>
               <div className="text-sm text-muted-foreground">
-                Джамб № {lastSession.jumboStockNumber} · Рулонов: {lastSession.result.total_rolls} ·
-                Циклов: {lastSession.result.cycles_used}
+                Рулонов: {lastSession.result.total_rolls} · Циклов: {lastSession.result.cycles_used}
               </div>
             </div>
           ) : (

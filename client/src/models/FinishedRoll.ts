@@ -77,7 +77,6 @@ export interface FinishedRoll {
   id: string;
   /** Human-readable roll number (е.g. «РЛ-260806-0001»). */
   number: string;
-  orderNumber: string;
   materialId: string;
   materialCode: string;
   widthMm: number;

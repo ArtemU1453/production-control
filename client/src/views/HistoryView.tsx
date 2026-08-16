@@ -89,7 +89,7 @@ export function HistoryView() {
       }
     >
       <div className="space-y-4">
-        <SearchBar value={query} onChange={setQuery} placeholder="Заказчик, номер, Джамб, материал" />
+        <SearchBar value={query} onChange={setQuery} placeholder="Заказчик, Джамб, материал" />
 
         {loading ? (
           <LoadingView />
@@ -118,7 +118,7 @@ export function HistoryView() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold">
-                          {group.session.order.orderNumber || "Без номера"}
+                          Джамб № {group.session.jumboStockNumber} · {group.session.materialCode}
                           {group.session.order.customer ? ` · ${group.session.order.customer}` : ""}
                         </span>
                         <StatusBadge
@@ -127,8 +127,7 @@ export function HistoryView() {
                         />
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {formatDateTime(group.session.createdAt)} · Джамб № {group.session.jumboStockNumber} ·{" "}
-                        {machineTitle(group.session.order.machine)}
+                        {formatDateTime(group.session.createdAt)} · {machineTitle(group.session.order.machine)}
                         {group.session.order.coating ? ` · ${coatingTitle(group.session.order.coating)}` : ""} · Рулонов:{" "}
                         {group.session.result.total_rolls}
                       </div>
@@ -164,7 +163,7 @@ export function HistoryView() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-semibold">
-                              {first.order.orderNumber || "Без номера"}
+                              Джамб № {first.jumboStockNumber} · {first.materialCode}
                               {first.order.customer ? ` · ${first.order.customer}` : ""}
                             </span>
                             <StatusBadge label={`Джамбо: ${group.sessions.length}`} tone="neutral" />

@@ -46,7 +46,6 @@ export interface OrderInfo {
   /** Время (HH:MM). */
   time: string;
   customer: string;
-  orderNumber: string;
   operator: string;
   machine: Machine;
   /** Красящий слой (IN/OUT). Optional for backward compatibility with sessions

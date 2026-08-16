@@ -29,7 +29,6 @@ export interface ReportFilter {
   operator?: string;
   machine?: Machine;
   customer?: string;
-  orderNumber?: string;
   jumboNumber?: string;
   status?: JumboStatus;
   grouping: ReportGrouping;
@@ -76,7 +75,6 @@ export function reportFilterKey(filter: ReportFilter): string {
     operator: filter.operator ?? "",
     machine: filter.machine ?? "",
     customer: filter.customer ?? "",
-    orderNumber: filter.orderNumber ?? "",
     jumboNumber: filter.jumboNumber ?? "",
     status: filter.status ?? "",
     grouping: filter.grouping,

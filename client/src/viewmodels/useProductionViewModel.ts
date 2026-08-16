@@ -11,6 +11,7 @@ import {
   type Jumbo,
   type Material,
   type OrderInfo,
+  type SessionDefect,
 } from "@/models";
 import type { CalcResult, CompleteCalculationOutcome } from "@/services";
 import { AuditAction } from "@/admin";
@@ -1100,6 +1101,41 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
           sessionId: result.session.id,
           chainId: chainIdAtFinish ?? undefined,
         });
+
+        // ── Брак: сохраняем в записи истории (по Джамбо) ─────────────────────
+        // Брак хранился только в журнале VM; переносим его в сессии, чтобы отчёт
+        // по нарезке и аналитика видели брак отдельно от годных рулонов, и он
+        // сохранялся между перезагрузками.
+        const defectsByJumboDetail = new Map<string, SessionDefect[]>();
+        for (const entry of logSnapshot) {
+          if (entry.kind === "defect" && entry.jumboStockNumber) {
+            const list = defectsByJumboDetail.get(entry.jumboStockNumber) ?? [];
+            list.push({
+              id: entry.id,
+              at: entry.at,
+              count: entry.count ?? 1,
+              widthMm: entry.widthMm,
+              areaM2: entry.areaM2,
+              meters: entry.meters,
+              reason: entry.reason ?? entry.note,
+              operator: entry.operator,
+              jumboStockNumber: entry.jumboStockNumber,
+            });
+            defectsByJumboDetail.set(entry.jumboStockNumber, list);
+          }
+        }
+        if (defectsByJumboDetail.size > 0) {
+          const allSessions = await cuttingSessions.getAll();
+          const runSessions = allSessions.filter(
+            (s) => s.id === result.session.id || (chainIdAtFinish != null && s.chainId === chainIdAtFinish),
+          );
+          for (const s of runSessions) {
+            const defectsForJumbo = defectsByJumboDetail.get(s.jumboStockNumber);
+            if (defectsForJumbo && defectsForJumbo.length > 0) {
+              await cuttingSessions.save({ ...s, defects: defectsForJumbo });
+            }
+          }
+        }
 
         // Технический цикл завершения (подрезка/переход) + запись о завершении.
         setProductionLog((log) => [

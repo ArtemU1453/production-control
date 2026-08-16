@@ -12,6 +12,32 @@ export enum CuttingSessionStatus {
   reverted = "reverted",
 }
 
+/**
+ * A defect recorded during the run, persisted with the session so the history
+ * report and future analytics can show reject rolls separately from good rolls.
+ * Derived from the production journal at finish; each entry keeps the size,
+ * reason and time the operator recorded.
+ */
+export interface SessionDefect {
+  id: string;
+  /** When the defect was recorded (ISO). */
+  at: string;
+  /** Number of reject rolls in this entry. */
+  count: number;
+  /** Roll width (mm), if known. */
+  widthMm?: number;
+  /** Scrapped area (m²), if known. */
+  areaM2?: number;
+  /** Material length consumed by the defect (m), if known. */
+  meters?: number;
+  /** Reason / comment recorded by the operator. */
+  reason?: string;
+  /** Operator who recorded it. */
+  operator?: string;
+  /** Stock number of the Jumbo the defect belongs to. */
+  jumboStockNumber?: string;
+}
+
 /** Order paperwork filled in before a production run. Persisted with the
  *  session so history keeps the full context of every calculation. */
 export interface OrderInfo {
@@ -67,6 +93,13 @@ export interface CuttingSession {
   operationIds: string[];
   /** Ids of waste records for this session (populated in a later phase). */
   wasteIds: string[];
+
+  /**
+   * Defects recorded for this session's Jumbo (persisted at finish). Optional
+   * for backward compatibility with sessions saved before defects were stored —
+   * such sessions simply report no defect breakdown.
+   */
+  defects?: SessionDefect[];
 
   /**
    * Multi-Jumbo order chain (optional). When one order is fulfilled across

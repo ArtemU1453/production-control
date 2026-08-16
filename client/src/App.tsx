@@ -11,6 +11,7 @@ import {
   FinishedRollDetailView,
   FinishedRollLabelView,
   HistoryView,
+  HistoryDetailView,
   JumboDetailView,
   MaterialEditorView,
   MaterialsView,
@@ -77,6 +78,9 @@ function AppRouter() {
         </Route>
         <Route path="/calculator" component={CalculatorView} />
         <Route path="/history" component={HistoryView} />
+        <Route path="/history/:id">
+          {(params) => <HistoryDetailView sessionId={params.id} />}
+        </Route>
 
         <Route path="/materials" component={MaterialsView} />
         <Route path="/materials/new">{() => <MaterialEditorView />}</Route>

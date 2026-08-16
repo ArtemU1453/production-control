@@ -453,7 +453,11 @@ export function ProductionOverviewView() {
   ];
 
   return (
-    <ScreenScaffold title={strings.production.title} subtitle="Станок №1 и Станок №2 — независимые процессы" wide>
+    <ScreenScaffold
+      title={strings.production.title}
+      subtitle={`${machineTitle(Machine.machine1)} и ${machineTitle(Machine.machine2)} — независимые процессы`}
+      wide
+    >
       <div className="space-y-3 pb-2">
         <div className="grid gap-3 lg:grid-cols-2">
           {machines.map(({ vm, machine }) => (

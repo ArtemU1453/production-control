@@ -74,7 +74,7 @@ export function ArchiveDetailView({ archiveId }: { archiveId: string }) {
               {archived.sessions.map((session, index) => (
                 <InfoRow
                   key={session.id}
-                  label={`${session.order.orderNumber || "Без номера"} · ${machineTitle(session.order.machine)}`}
+                  label={`Джамб № ${session.jumboStockNumber} · ${session.order.customer || "—"} · ${machineTitle(session.order.machine)}`}
                   value={`${session.result.total_rolls} рул.`}
                   last={index === archived.sessions.length - 1}
                 />

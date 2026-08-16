@@ -291,7 +291,7 @@ export function FinishedGoodsPanel() {
         </div>
       </div>
 
-      <SearchBar value={vm.query} onChange={vm.setQuery} placeholder="Ширина, намотка, материал, комментарий, № заказа, № партии" />
+      <SearchBar value={vm.query} onChange={vm.setQuery} placeholder="Ширина, намотка, материал, комментарий, № рулона, Джамбо" />
 
       {showFilters ? (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">

@@ -26,7 +26,6 @@ export { SectionCard } from "./SectionCard";
 export { KpiCard } from "./KpiCard";
 export { StatisticCard } from "./StatisticCard";
 export { JumboCard } from "./JumboCard";
-export { OrderCard } from "./OrderCard";
 export { MachineCard } from "./MachineCard";
 export { ArchiveCard } from "./ArchiveCard";
 export { ReportCard } from "./ReportCard";

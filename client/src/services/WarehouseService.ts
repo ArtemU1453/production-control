@@ -348,7 +348,6 @@ export function createWarehouseService(
           operator: order.operator,
           machine: order.machine,
           customer: order.customer,
-          orderNumber: order.orderNumber,
           usedLengthDeltaM: consumed,
           usefulAreaDeltaM2: result.useful_area_m2,
           rollsCount: result.total_rolls,

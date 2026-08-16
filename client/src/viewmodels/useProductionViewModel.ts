@@ -138,7 +138,6 @@ export interface ChainStep {
 
 /** Final production summary shown once an order is completed. */
 export interface CompletionSummary {
-  orderNumber: string;
   customer: string;
   jumbosUsed: number;
   producedMainRolls: number;
@@ -161,7 +160,6 @@ export interface CompletionSummary {
 
 /** Roll-up shown once a (possibly multi-Jumbo) order is finished. */
 export interface OrderSummary {
-  orderNumber: string;
   customer: string;
   jumbosUsed: number;
   totalMainRolls: number;
@@ -202,14 +200,6 @@ function todayIsoDate(): string {
 
 function currentTime(): string {
   return new Date().toTimeString().slice(0, 5);
-}
-
-/** Auto-generated order number (the manual "Заказ" field was removed — the task
- *  now starts from the material). Unique to the second. */
-function generateOrderNumber(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `ORD-${d.getFullYear().toString().slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function round1(value: number): number {
@@ -392,7 +382,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
     date: todayIsoDate(),
     time: currentTime(),
     customer: "",
-    orderNumber: generateOrderNumber(),
     operator: "",
     machine,
     coating: DEFAULT_COATING,
@@ -605,7 +594,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
 
   const orderValid =
     order.customer.trim().length > 0 &&
-    order.orderNumber.trim().length > 0 &&
     order.operator.trim().length > 0;
 
   const jumboValid =
@@ -647,10 +635,10 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
         entity: "Джамб",
         entityId: jumbo.stockNumber,
         user: order.operator,
-        details: `Заказ ${order.orderNumber || "без номера"}${note}: ${done.total_rolls} рул.`,
+        details: `Заказчик ${order.customer || "—"}${note}: ${done.total_rolls} рул.`,
       });
     },
-    [admin, order.operator, order.orderNumber],
+    [admin, order.operator, order.customer],
   );
 
   const continueOnNewJumbo = useCallback(
@@ -786,7 +774,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
           await cuttingSessions.save({ ...result.session, chainId, chainIndex: index });
           const steps = [...chainSteps, buildStep(selectedJumbo, plan, result)];
           setOrderSummary({
-            orderNumber: order.orderNumber,
             customer: order.customer,
             jumbosUsed: steps.length,
             totalMainRolls: producedMain + plan.total_main_rolls,
@@ -1033,7 +1020,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
         const orderDeliveredRolls = Math.min(goodRolls, target);
         const warehouseSurplusRolls = Math.max(0, goodRolls - target);
         setCompletionSummary({
-          orderNumber: order.orderNumber,
           customer: order.customer,
           jumbosUsed: steps.length,
           producedMainRolls: producedRolls,
@@ -1091,7 +1077,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
           }
         }
         await finishedGoods.materializeFromCompletion({
-          orderNumber: order.orderNumber,
           materialId,
           materialCode: jumboAtFinish.materialCode,
           widthMm: params.rollWidthMm,
@@ -1178,7 +1163,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
     params.rollLengthM,
     params.additionalDestination,
     order.machine,
-    order.orderNumber,
     order.customer,
     order.operator,
     startedAt,
@@ -1203,7 +1187,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
       ...previous,
       date: todayIsoDate(),
       time: currentTime(),
-      orderNumber: generateOrderNumber(),
       customer: "",
       coating: DEFAULT_COATING,
       comment: "",
@@ -1226,7 +1209,6 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
       ...previous,
       date: todayIsoDate(),
       time: currentTime(),
-      orderNumber: generateOrderNumber(),
       customer: "",
       coating: DEFAULT_COATING,
       comment: "",

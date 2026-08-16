@@ -18,7 +18,6 @@ function matches(session: CuttingSession, query: string): boolean {
   }
   return [
     session.order.customer,
-    session.order.orderNumber,
     session.order.operator,
     session.jumboStockNumber,
     session.materialCode,

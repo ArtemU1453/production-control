@@ -96,7 +96,7 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
   return (
     <ScreenScaffold
       title={roll.number}
-      subtitle={`Заказ ${roll.orderNumber || "—"} · ${roll.materialCode}`}
+      subtitle={`${roll.materialCode} · ${roll.widthMm}×${roll.lengthM}`}
       toolbar={
         <Link href="/finished-goods">
           <Button variant="secondary" size="icon" className="rounded-xl" aria-label="К списку">
@@ -122,7 +122,6 @@ export function FinishedRollDetailView({ rollId }: { rollId: string }) {
             <InfoRow label="Станок" value={machineTitle(roll.machine)} />
             <InfoRow label="Оператор" value={roll.operator || "—"} />
             <InfoRow label="Джамбо" value={roll.jumboStockNumber || "—"} />
-            <InfoRow label="Заказ" value={roll.orderNumber || "—"} />
             {roll.sourceReason ? <InfoRow label="Причина появления" value={roll.sourceReason} /> : null}
             {roll.storageLocation ? <InfoRow label="Место хранения" value={roll.storageLocation} /> : null}
             <InfoRow label="Статус" value={finishedRollStatusTitle(roll.status)} last={!roll.comment} />

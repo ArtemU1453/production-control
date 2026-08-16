@@ -39,7 +39,6 @@ function sessionMatches(session: CuttingSession, filter: ReportFilter): boolean 
     equalsIfSet(session.order.operator, filter.operator) &&
     equalsIfSet(session.order.machine, filter.machine) &&
     equalsIfSet(session.order.customer, filter.customer) &&
-    equalsIfSet(session.order.orderNumber, filter.orderNumber) &&
     equalsIfSet(session.jumboStockNumber, filter.jumboNumber)
   );
 }
@@ -83,8 +82,7 @@ function operationMatches(operation: JumboOperation, filter: ReportFilter): bool
     dateInRange(operation.timestamp, filter.startDate, filter.endDate) &&
     equalsIfSet(operation.operator, filter.operator) &&
     equalsIfSet(operation.machine, filter.machine) &&
-    equalsIfSet(operation.customer, filter.customer) &&
-    equalsIfSet(operation.orderNumber, filter.orderNumber)
+    equalsIfSet(operation.customer, filter.customer)
   );
 }
 

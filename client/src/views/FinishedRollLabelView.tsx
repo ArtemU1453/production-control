@@ -31,7 +31,6 @@ export function FinishedRollLabelView({ rollId }: { rollId: string }) {
     if (!roll) return "";
     const payload = [
       `РЛ:${roll.number}`,
-      `Заказ:${roll.orderNumber}`,
       `Мат:${roll.materialCode}`,
       `Слой:${roll.coating ? coatingTitle(roll.coating) : "-"}`,
       `${roll.widthMm}x${roll.lengthM}`,
@@ -96,7 +95,6 @@ export function FinishedRollLabelView({ rollId }: { rollId: string }) {
             {cell("Ширина", `${roll.widthMm} мм`)}
             {cell("Длина", `${roll.lengthM} м`)}
             {cell("Дата", formatDate(roll.producedAt))}
-            {cell("Заказ", roll.orderNumber || "—")}
             {cell("Джамбо", roll.jumboStockNumber || "—")}
             {cell("Станок", machineTitle(roll.machine))}
           </div>

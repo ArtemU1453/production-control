@@ -25,6 +25,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { WAREHOUSE_CUSTOMER, isWarehouseCustomer } from "@/core/production/warehouseRun";
 import {
   Select,
   SelectContent,
@@ -781,7 +783,32 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                 {locked ? (
                   <StaticValue>{vm.order.customer || "—"}</StaticValue>
                 ) : (
-                  <Input id="order-customer" value={vm.order.customer} onChange={(e) => vm.updateOrder("customer", e.target.value)} className="rounded-2xl" />
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="order-to-warehouse"
+                        checked={isWarehouseCustomer(vm.order.customer)}
+                        onCheckedChange={(on) => vm.updateOrder("customer", on ? WAREHOUSE_CUSTOMER : "")}
+                        aria-label="На склад"
+                      />
+                      <Label htmlFor="order-to-warehouse" className="text-[11px] text-muted-foreground">
+                        На склад
+                      </Label>
+                    </div>
+                    <Input
+                      id="order-customer"
+                      value={vm.order.customer}
+                      onChange={(e) => vm.updateOrder("customer", e.target.value)}
+                      disabled={isWarehouseCustomer(vm.order.customer)}
+                      placeholder="Заказчик"
+                      className="rounded-2xl"
+                    />
+                    {isWarehouseCustomer(vm.order.customer) ? (
+                      <p className={cn(AppTypography.caption2, "text-muted-foreground")}>
+                        Складское производство: номер заказа не требуется, вся годная продукция будет оприходована на склад.
+                      </p>
+                    ) : null}
+                  </div>
                 )}
               </Field>
               <Field label="Станок">

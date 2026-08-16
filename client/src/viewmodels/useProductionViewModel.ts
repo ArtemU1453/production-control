@@ -18,6 +18,7 @@ import { AuditAction } from "@/admin";
 import { makeId } from "@/utilities/id";
 import { computeTechScrap, TECH_CYCLE_DISPLAY_M } from "@/core/production/techScrap";
 import { computeActiveDurationMs } from "@/core/production/activeDuration";
+import { isWarehouseCustomer } from "@/core/production/warehouseRun";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -1010,7 +1011,10 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
       const planAtFinish = plan;
       const priorSteps = [...chainSteps];
       const priorProduced = producedMain;
-      const target = orderTotalRolls ?? params.orderRolls;
+      // Складское производство (заказчик «Склад»): весь годный выпуск уходит на
+      // склад, поэтому целевое количество заказа = 0 (излишком становится всё).
+      const warehouseRun = isWarehouseCustomer(order.customer);
+      const target = warehouseRun ? 0 : (orderTotalRolls ?? params.orderRolls);
       const machine = order.machine;
       const startedSnapshot = startedAt;
       const defects = defectCount;
@@ -1069,9 +1073,10 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
           goodRolls: Math.max(0, step.producedMainRolls - (defectsByJumbo.get(step.jumboStockNumber) ?? 0)),
         }));
         // Дополнительные размеры — байпродукт, каждый размер отдельно. На склад
-        // только при назначении «На склад»; при «В заказ» они уходят с заказом.
+        // при назначении «На склад» или в складском производстве; при «В заказ»
+        // они уходят с заказом.
         const additionalSizes: { widthMm: number; count: number }[] = [];
-        if (params.additionalDestination === RollDestination.warehouse) {
+        if (warehouseRun || params.additionalDestination === RollDestination.warehouse) {
           const byWidth = new Map<number, number>();
           for (const step of steps) {
             if (step.additional1Width && step.additional1Count > 0) {
@@ -1096,7 +1101,7 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
           coating: order.coating,
           producedAt: new Date().toISOString(),
           targetRolls: target,
-          destination: params.additionalDestination,
+          destination: warehouseRun ? RollDestination.warehouse : params.additionalDestination,
           perJumbo,
           additionalSizes,
           sessionId: result.session.id,

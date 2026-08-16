@@ -23,7 +23,7 @@ import type {
   SettingsRepository,
   WasteRepository,
 } from "../repositories";
-import type { CalcResult } from "../core/calculator/calculatorLogic";
+import { finishedMainWidthMm, type CalcResult } from "../core/calculator/calculatorLogic";
 import { nowIso } from "../extensions/date";
 import { makeId } from "../utilities/id";
 
@@ -168,7 +168,9 @@ function buildRolls(sessionId: string, result: CalcResult, additionalDestination
       id: makeId(),
       sessionId,
       kind: CuttingRollKind.main,
-      widthMm: result.roll_width_mm,
+      // Товарный размер основного рулона (заданный оператором), а не технический
+      // размер раскроя — этот снимок описывает произведённую готовую продукцию.
+      widthMm: finishedMainWidthMm(result),
       lengthM: result.roll_length_m,
       count: result.total_main_rolls,
       destination: RollDestination.order,

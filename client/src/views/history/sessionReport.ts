@@ -1,5 +1,6 @@
 import type { CuttingSession, FinishedRoll, SessionDefect } from "@/models";
 import { FinishedRollStatus } from "@/models";
+import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 
 /**
  * sessionReport — a **pure, structured** derivation of the full per-cutting
@@ -106,12 +107,16 @@ export function buildSessionReport(session: CuttingSession, finishedRolls: Finis
 
   const mainLines: SessionRollLine[] = [];
   if (result.total_main_rolls > 0) {
+    // Товарный размер (заданный оператором), а не технический размер раскроя —
+    // готовые рулоны на складе оприходованы именно под этой шириной, поэтому и
+    // сопоставление движения по складу идёт по ней.
+    const mainWidthMm = finishedMainWidthMm(result);
     mainLines.push({
       kind: "main",
       label: "Основной",
-      widthMm: result.roll_width_mm,
+      widthMm: mainWidthMm,
       lengthM: rollLengthM,
-      movement: movementForWidth(result.total_main_rolls, result.roll_width_mm, finishedForSession),
+      movement: movementForWidth(result.total_main_rolls, mainWidthMm, finishedForSession),
     });
   }
 

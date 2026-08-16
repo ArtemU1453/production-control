@@ -104,11 +104,19 @@ export interface CuttingSession {
   /**
    * Actual production timing of the run (ISO). `startedAt` is when the operator
    * started production; `completedAt` is when it finished. Optional for backward
-   * compatibility with sessions saved before timing was stored — such sessions
-   * simply report no duration. The elapsed time is `completedAt − startedAt`.
+   * compatibility with sessions saved before timing was stored.
    */
   startedAt?: string;
   completedAt?: string;
+
+  /**
+   * Actual working time of the run in milliseconds — the SUM of the running
+   * intervals, with every paused period excluded (see computeActiveDurationMs).
+   * This is «Время выполнения» in the history report. Persisted at finish so the
+   * value never changes and is not recomputed from live state. Optional: older
+   * records without it fall back to `completedAt − startedAt`, or «—».
+   */
+  activeDurationMs?: number;
 
   /**
    * Multi-Jumbo order chain (optional). When one order is fulfilled across

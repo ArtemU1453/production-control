@@ -1,6 +1,6 @@
 import type { ArchivedJumbo, CuttingSession, Machine, SessionDefect } from "@/models";
 import { CuttingRollKind, RollDestination } from "@/models";
-import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
+import { finishedAdditionalWidthMm, finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 import { isWarehouseCustomer, WAREHOUSE_CUSTOMER } from "@/core/production/warehouseRun";
 
 /**
@@ -125,10 +125,11 @@ function sessionLines(session: CuttingSession): ProducedRollLine[] {
     });
   }
 
-  // Additional sizes — each its own line, real width from the result.
+  // Additional sizes — each its own line, товарный (заданный) размер, а не
+  // технический размер раскроя.
   const additionals: Array<{ width: number | null; count: number }> = [
-    { width: result.additional_width_mm, count: result.total_additional_rolls_1 },
-    { width: result.additional_width_mm_2, count: result.total_additional_rolls_2 },
+    { width: finishedAdditionalWidthMm(result, 1), count: result.total_additional_rolls_1 },
+    { width: finishedAdditionalWidthMm(result, 2), count: result.total_additional_rolls_2 },
   ];
   for (const add of additionals) {
     if (add.width && add.count > 0) {

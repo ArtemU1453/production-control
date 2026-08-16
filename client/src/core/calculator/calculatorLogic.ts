@@ -3,6 +3,14 @@ const RANGE_MATERIAL_WIDTH = [550, 910] as const;
 const RANGE_ROLL_WIDTH = [20, 310] as const;
 const RANGE_ROLL_LENGTH = [30, 1100] as const;
 const MAX_ROLL_WIDTH_REDUCTION = 0.03;
+/**
+ * How much larger a manually-entered additional («доп.») size may be than the
+ * geometric leftover and still be produced. Within this margin the strip is cut
+ * to the leftover (a technical correction), while the finished product keeps the
+ * entered commercial size. Beyond it the request is rejected. Mirrors the main
+ * roll's adjustment idea, but for the operator-specified additional size.
+ */
+const MAX_ADDITIONAL_WIDTH_REDUCTION = 0.05;
 const SETUP_LENGTH_M = 10;
 
 function _cycles_per_hour_by_width(roll_width_mm: number) {
@@ -86,9 +94,21 @@ export type CalcResult = {
   order_rolls: number;
   main_count: number;
   remaining_width_mm: number;
+  /** Technical (cutting) width of the first additional size — the width the
+   *  strip is physically cut to. May be trimmed to the geometric leftover. */
   additional_width_mm: number | null;
   /** Second additional size (мм), only used in manual mode. */
   additional_width_mm_2: number | null;
+  /**
+   * Commercial («business») width of the first additional size — the finished
+   * size the operator entered. When a manually-entered size is slightly larger
+   * than the geometric leftover, the strip is cut to the leftover
+   * (`additional_width_mm`) but the finished product keeps this entered size.
+   * Equal to `additional_width_mm` when nothing was trimmed / in auto mode.
+   * Null when there is no first additional size. */
+  additional_width_input_mm: number | null;
+  /** Commercial width of the second additional size (see above). */
+  additional_width_input_mm_2: number | null;
   was_adjusted: boolean;
   rolls_per_cycle: number;
   cycles_needed: number;
@@ -147,6 +167,24 @@ export type CalcResult = {
  */
 export function finishedMainWidthMm(result: CalcResult): number {
   return result.roll_width_input_mm || result.roll_width_mm;
+}
+
+/**
+ * Коммерческая («товарная») ширина дополнительного рулона — размер, заданный
+ * оператором как готовый доп. размер. Именно он идёт в учёт готовой продукции
+ * (склад, история, аналитика, отчёты, карточки производства), тогда как
+ * `additional_width_mm*` — технический размер, до которого физически режется
+ * полоса (может быть ужат до геометрического остатка).
+ *
+ * `slot` — 1 или 2 (первый / второй доп. размер). Старые записи без
+ * `additional_width_input_mm*` откатываются к техническому размеру. Возвращает
+ * null, если такого доп. размера нет.
+ */
+export function finishedAdditionalWidthMm(result: CalcResult, slot: 1 | 2): number | null {
+  if (slot === 1) {
+    return result.additional_width_input_mm ?? result.additional_width_mm;
+  }
+  return result.additional_width_input_mm_2 ?? result.additional_width_mm_2;
 }
 
 export function calculate(
@@ -245,31 +283,54 @@ export function calculate(
     was_adjusted = false;
   }
 
+  // `additional_width` — TECHNICAL cut width (used for geometry/waste).
+  // `additional_input` — COMMERCIAL width the operator entered (finished size).
+  // They differ only when a manual size is trimmed to fit the leftover.
   let additional_width: number | null = null;
+  let additional_input: number | null = null;
   if (auto_mode) {
     if (!was_adjusted && remaining_width >= RANGE_ROLL_WIDTH[0] && remaining_width <= RANGE_ROLL_WIDTH[1]) {
       additional_width = remaining_width;
+      additional_input = remaining_width; // авто-остаток: бизнес = технический
     }
   } else if (override_1 !== null) {
     if (override_1 - remaining_width > 1e-6) {
-      throw new Error(
-        `Доп. размер ${override_1.toFixed(1)} мм больше остатка ${remaining_width.toFixed(1)} мм.`
-      );
+      // Заданный готовый размер больше геометрического остатка. В пределах
+      // допуска режем по остатку (техническая поправка), но в готовую продукцию
+      // идёт заданный оператором размер; иначе — ошибка.
+      if (override_1 - remaining_width <= override_1 * MAX_ADDITIONAL_WIDTH_REDUCTION) {
+        additional_width = remaining_width;
+        additional_input = override_1;
+      } else {
+        throw new Error(
+          `Доп. размер ${override_1.toFixed(1)} мм больше остатка ${remaining_width.toFixed(1)} мм.`
+        );
+      }
+    } else {
+      additional_width = override_1;
+      additional_input = override_1;
     }
-    additional_width = override_1;
   }
 
   // Second additional size — manual only. Cut from the width left after the main
   // rolls and the first additional roll.
   let additional_width_2: number | null = null;
+  let additional_input_2: number | null = null;
   if (override_2 !== null) {
     const remaining_after_1 = remaining_width - (additional_width || 0);
     if (override_2 - remaining_after_1 > 1e-6) {
-      throw new Error(
-        `Доп. размер №2 ${override_2.toFixed(1)} мм больше остатка ${remaining_after_1.toFixed(1)} мм.`
-      );
+      if (override_2 - remaining_after_1 <= override_2 * MAX_ADDITIONAL_WIDTH_REDUCTION && remaining_after_1 >= RANGE_ROLL_WIDTH[0]) {
+        additional_width_2 = remaining_after_1;
+        additional_input_2 = override_2;
+      } else {
+        throw new Error(
+          `Доп. размер №2 ${override_2.toFixed(1)} мм больше остатка ${remaining_after_1.toFixed(1)} мм.`
+        );
+      }
+    } else {
+      additional_width_2 = override_2;
+      additional_input_2 = override_2;
     }
-    additional_width_2 = override_2;
   }
 
   const available_length_m = big_roll_length_m - SETUP_LENGTH_M;
@@ -385,6 +446,8 @@ export function calculate(
     remaining_width_mm: remaining_width,
     additional_width_mm: additional_width,
     additional_width_mm_2: additional_width_2,
+    additional_width_input_mm: additional_input,
+    additional_width_input_mm_2: additional_input_2,
     was_adjusted,
     rolls_per_cycle,
     cycles_needed,
@@ -588,6 +651,8 @@ function _calculate_samples(
     remaining_width_mm: 0,
     additional_width_mm: null,
     additional_width_mm_2: null,
+    additional_width_input_mm: null,
+    additional_width_input_mm_2: null,
     was_adjusted: false,
     rolls_per_cycle: strips_per_cycle,
     cycles_needed,

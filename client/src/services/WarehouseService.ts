@@ -23,7 +23,7 @@ import type {
   SettingsRepository,
   WasteRepository,
 } from "../repositories";
-import { finishedMainWidthMm, type CalcResult } from "../core/calculator/calculatorLogic";
+import { finishedAdditionalWidthMm, finishedMainWidthMm, type CalcResult } from "../core/calculator/calculatorLogic";
 import { nowIso } from "../extensions/date";
 import { makeId } from "../utilities/id";
 
@@ -182,7 +182,8 @@ function buildRolls(sessionId: string, result: CalcResult, additionalDestination
       id: makeId(),
       sessionId,
       kind: CuttingRollKind.additional,
-      widthMm: result.additional_width_mm,
+      // Товарный (заданный) доп. размер, а не технический размер раскроя.
+      widthMm: finishedAdditionalWidthMm(result, 1) ?? result.additional_width_mm,
       lengthM: result.roll_length_m,
       count: result.total_additional_rolls_1,
       destination: additionalDestination,
@@ -193,7 +194,7 @@ function buildRolls(sessionId: string, result: CalcResult, additionalDestination
       id: makeId(),
       sessionId,
       kind: CuttingRollKind.additional,
-      widthMm: result.additional_width_mm_2,
+      widthMm: finishedAdditionalWidthMm(result, 2) ?? result.additional_width_mm_2,
       lengthM: result.roll_length_m,
       count: result.total_additional_rolls_2,
       destination: additionalDestination,

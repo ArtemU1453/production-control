@@ -1,6 +1,6 @@
 import type { CuttingSession, FinishedRoll, SessionDefect } from "@/models";
 import { FinishedRollStatus } from "@/models";
-import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
+import { finishedAdditionalWidthMm, finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 
 /**
  * sessionReport — a **pure, structured** derivation of the full per-cutting
@@ -120,23 +120,27 @@ export function buildSessionReport(session: CuttingSession, finishedRolls: Finis
     });
   }
 
+  // Товарные (заданные) доп. размеры — готовые рулоны на складе оприходованы
+  // именно под ними, поэтому и сопоставление движения идёт по ним.
   const additionalLines: SessionRollLine[] = [];
-  if (result.additional_width_mm && result.total_additional_rolls_1 > 0) {
+  const add1 = finishedAdditionalWidthMm(result, 1);
+  if (add1 && result.total_additional_rolls_1 > 0) {
     additionalLines.push({
       kind: "additional",
       label: "Доп. 1",
-      widthMm: result.additional_width_mm,
+      widthMm: add1,
       lengthM: rollLengthM,
-      movement: movementForWidth(result.total_additional_rolls_1, result.additional_width_mm, finishedForSession),
+      movement: movementForWidth(result.total_additional_rolls_1, add1, finishedForSession),
     });
   }
-  if (result.additional_width_mm_2 && result.total_additional_rolls_2 > 0) {
+  const add2 = finishedAdditionalWidthMm(result, 2);
+  if (add2 && result.total_additional_rolls_2 > 0) {
     additionalLines.push({
       kind: "additional",
       label: "Доп. 2",
-      widthMm: result.additional_width_mm_2,
+      widthMm: add2,
       lengthM: rollLengthM,
-      movement: movementForWidth(result.total_additional_rolls_2, result.additional_width_mm_2, finishedForSession),
+      movement: movementForWidth(result.total_additional_rolls_2, add2, finishedForSession),
     });
   }
 

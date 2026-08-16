@@ -11,6 +11,20 @@ const MAX_ROLL_WIDTH_REDUCTION = 0.03;
  * roll's adjustment idea, but for the operator-specified additional size.
  */
 const MAX_ADDITIONAL_WIDTH_REDUCTION = 0.05;
+/**
+ * Шаг «готового стандарта» для дополнительного рулона в авто-режиме. Реальный
+ * геометрический остаток (напр. 58 мм) — это технический размер раскроя; в учёт
+ * готовой продукции идёт остаток, округлённый к ближайшему кратному этого шага
+ * (58 → 60). Округляется только товарный размер; геометрия/отход не меняются.
+ */
+const FINISHED_WIDTH_STEP_MM = 5;
+
+/** Округляет ширину к ближайшему «готовому стандарту» (кратному шага),
+ *  оставаясь в допустимом диапазоне ширины рулона. */
+function roundToFinishedStandard(widthMm: number): number {
+  const rounded = Math.round(widthMm / FINISHED_WIDTH_STEP_MM) * FINISHED_WIDTH_STEP_MM;
+  return Math.min(RANGE_ROLL_WIDTH[1], Math.max(RANGE_ROLL_WIDTH[0], rounded));
+}
 const SETUP_LENGTH_M = 10;
 
 function _cycles_per_hour_by_width(roll_width_mm: number) {
@@ -290,8 +304,8 @@ export function calculate(
   let additional_input: number | null = null;
   if (auto_mode) {
     if (!was_adjusted && remaining_width >= RANGE_ROLL_WIDTH[0] && remaining_width <= RANGE_ROLL_WIDTH[1]) {
-      additional_width = remaining_width;
-      additional_input = remaining_width; // авто-остаток: бизнес = технический
+      additional_width = remaining_width;                      // технический (реальный остаток)
+      additional_input = roundToFinishedStandard(remaining_width); // товарный (округлённый до стандарта)
     }
   } else if (override_1 !== null) {
     if (override_1 - remaining_width > 1e-6) {

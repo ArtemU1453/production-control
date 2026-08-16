@@ -1124,17 +1124,22 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
             defectsByJumboDetail.set(entry.jumboStockNumber, list);
           }
         }
-        if (defectsByJumboDetail.size > 0) {
-          const allSessions = await cuttingSessions.getAll();
-          const runSessions = allSessions.filter(
-            (s) => s.id === result.session.id || (chainIdAtFinish != null && s.chainId === chainIdAtFinish),
-          );
-          for (const s of runSessions) {
-            const defectsForJumbo = defectsByJumboDetail.get(s.jumboStockNumber);
-            if (defectsForJumbo && defectsForJumbo.length > 0) {
-              await cuttingSessions.save({ ...s, defects: defectsForJumbo });
-            }
-          }
+        // Патчим все сессии этого запуска: фактическое время производства
+        // (начало/завершение) и брак по Джамбо. Время нужно для «Время
+        // выполнения» в истории; берётся из реальных меток запуска/завершения.
+        const completedAtIso = new Date().toISOString();
+        const allSessions = await cuttingSessions.getAll();
+        const runSessions = allSessions.filter(
+          (s) => s.id === result.session.id || (chainIdAtFinish != null && s.chainId === chainIdAtFinish),
+        );
+        for (const s of runSessions) {
+          const defectsForJumbo = defectsByJumboDetail.get(s.jumboStockNumber);
+          await cuttingSessions.save({
+            ...s,
+            startedAt: startedSnapshot ?? s.startedAt,
+            completedAt: completedAtIso,
+            ...(defectsForJumbo && defectsForJumbo.length > 0 ? { defects: defectsForJumbo } : {}),
+          });
         }
 
         // Технический цикл завершения (подрезка/переход) + запись о завершении.

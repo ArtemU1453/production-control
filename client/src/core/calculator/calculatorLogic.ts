@@ -130,6 +130,25 @@ export type CalcResult = {
   dropped_sample_widths: number[];
 };
 
+/**
+ * Коммерческая («товарная») ширина основного рулона — тот размер, который
+ * оператор задал в поле «Ширина, мм» (`roll_width_input_mm`). Именно он идёт в
+ * учёт готовой продукции: склад, история, аналитика, отчёты, карточки
+ * производства.
+ *
+ * Технический размер раскроя (`roll_width_mm`) алгоритм мог уменьшить в
+ * авто-режиме ради оптимальной укладки по ширине Джамбо (см.
+ * `_apply_roll_width_adjustment`) — он остаётся только в схеме раскроя и в
+ * расчёте отхода/циклов/расхода, но НИКОГДА не подменяет товарный размер в
+ * учёте готовой продукции.
+ *
+ * Старые записи, сохранённые до появления `roll_width_input_mm`, откатываются к
+ * техническому размеру (лучшее из доступного), чтобы не сломать историю.
+ */
+export function finishedMainWidthMm(result: CalcResult): number {
+  return result.roll_width_input_mm || result.roll_width_mm;
+}
+
 export function calculate(
   material_width_mm: number,
   useful_width_mm: number,

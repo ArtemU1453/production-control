@@ -16,6 +16,7 @@ import { AppTypography } from "@/designsystem";
 import { coatingTitle, machineTitle } from "@/models";
 import { formatDateTime, formatDuration, formatElapsed } from "@/extensions/date";
 import { formatArea, formatMeters, formatMm } from "@/extensions/number";
+import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 import { useHistoryDetailViewModel } from "@/viewmodels";
 import type { SessionRollLine } from "./history/sessionReport";
 
@@ -138,7 +139,7 @@ export function HistoryDetailView({ sessionId }: { sessionId: string }) {
             {order.coating ? <InfoRow label="Красящий слой" value={coatingTitle(order.coating)} last /> : null}
           </div>
           <div className="space-y-1">
-            <InfoRow label="Основной размер" value={formatMm(r.roll_width_mm)} />
+            <InfoRow label="Основной размер" value={formatMm(finishedMainWidthMm(r))} />
             <InfoRow label="Доп. размеры" value={additionalWidths || "—"} />
             <InfoRow label="Циклов" value={`${r.cycles_used}`} />
             <InfoRow label="Расход материала" value={formatMeters(r.used_length_m)} />

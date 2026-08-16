@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { WAREHOUSE_CUSTOMER, isWarehouseCustomer } from "@/core/production/warehouseRun";
+import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 import {
   Select,
   SelectContent,
@@ -1004,7 +1005,7 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                   <RollResultTile
                     label="Рулонов (осн.)"
                     count={plan ? plan.total_main_rolls : 0}
-                    widthMm={plan ? plan.roll_width_mm : null}
+                    widthMm={plan ? finishedMainWidthMm(plan) : null}
                     tone="main"
                   />
                   <AdditionalRollsTile label="Рулонов (доп.)" rows={additionalSizeRows(plan)} />

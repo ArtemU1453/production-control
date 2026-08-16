@@ -19,6 +19,7 @@ import { makeId } from "@/utilities/id";
 import { computeTechScrap, TECH_CYCLE_DISPLAY_M } from "@/core/production/techScrap";
 import { computeActiveDurationMs } from "@/core/production/activeDuration";
 import { isWarehouseCustomer } from "@/core/production/warehouseRun";
+import { finishedAdditionalWidthMm } from "@/core/calculator/calculatorLogic";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -216,9 +217,11 @@ function buildStep(jumbo: Jumbo, plan: CalcResult, outcome: CompleteCalculationO
     materialCode: jumbo.materialCode,
     producedMainRolls: plan.total_main_rolls,
     additionalRolls: plan.total_additional_rolls,
-    additional1Width: plan.additional_width_mm,
+    // Товарные (заданные оператором) доп. размеры — именно они идут в учёт
+    // готовой продукции (склад), а не технический размер раскроя.
+    additional1Width: finishedAdditionalWidthMm(plan, 1),
     additional1Count: plan.total_additional_rolls_1,
-    additional2Width: plan.additional_width_mm_2,
+    additional2Width: finishedAdditionalWidthMm(plan, 2),
     additional2Count: plan.total_additional_rolls_2,
     remainderAfterM: outcome.remainderAfterM,
     consumedM: round1(Math.max(0, jumbo.currentRemainderM - outcome.remainderAfterM)),

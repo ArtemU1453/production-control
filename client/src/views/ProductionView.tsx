@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { WAREHOUSE_CUSTOMER, isWarehouseCustomer } from "@/core/production/warehouseRun";
-import { finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
+import { finishedAdditionalWidthMm, finishedMainWidthMm } from "@/core/calculator/calculatorLogic";
 import {
   Select,
   SelectContent,
@@ -283,11 +283,14 @@ function additionalSizeRows(plan: ProductionVM["plan"]): AdditionalSizeRow[] {
     return [];
   }
   const rows: AdditionalSizeRow[] = [];
-  if (plan.additional_width_mm && plan.total_additional_rolls_1 > 0) {
-    rows.push({ tone: "additional", widthMm: plan.additional_width_mm, count: plan.total_additional_rolls_1 });
+  // Товарные (заданные) доп. размеры готовой продукции, а не технический раскрой.
+  const add1 = finishedAdditionalWidthMm(plan, 1);
+  if (add1 && plan.total_additional_rolls_1 > 0) {
+    rows.push({ tone: "additional", widthMm: add1, count: plan.total_additional_rolls_1 });
   }
-  if (plan.additional_width_mm_2 && plan.total_additional_rolls_2 > 0) {
-    rows.push({ tone: "additional2", widthMm: plan.additional_width_mm_2, count: plan.total_additional_rolls_2 });
+  const add2 = finishedAdditionalWidthMm(plan, 2);
+  if (add2 && plan.total_additional_rolls_2 > 0) {
+    rows.push({ tone: "additional2", widthMm: add2, count: plan.total_additional_rolls_2 });
   }
   return rows;
 }

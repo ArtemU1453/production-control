@@ -49,6 +49,7 @@ export { useJumboDetailViewModel, type JumboEdit } from "./useJumboDetailViewMod
 export {
   useArchiveViewModel,
   ARCHIVE_MONTHS,
+  ARCHIVE_CLEAR_PHRASE,
   type ArchiveMaterialFilter,
   type ArchiveYearFilter,
   type ArchiveMonthFilter,

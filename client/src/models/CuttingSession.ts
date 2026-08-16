@@ -102,6 +102,15 @@ export interface CuttingSession {
   defects?: SessionDefect[];
 
   /**
+   * Actual production timing of the run (ISO). `startedAt` is when the operator
+   * started production; `completedAt` is when it finished. Optional for backward
+   * compatibility with sessions saved before timing was stored — such sessions
+   * simply report no duration. The elapsed time is `completedAt − startedAt`.
+   */
+  startedAt?: string;
+  completedAt?: string;
+
+  /**
    * Multi-Jumbo order chain (optional). When one order is fulfilled across
    * several Jumbos, every session of that order shares a `chainId`, and
    * `chainIndex` gives its 1-based position in the chain. Absent for ordinary

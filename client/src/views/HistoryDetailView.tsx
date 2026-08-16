@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, TriangleAlert } from "lucide-react";
 import {
@@ -15,10 +14,9 @@ import { cn } from "@/lib/utils";
 import { icons } from "@/resources/icons";
 import { AppTypography } from "@/designsystem";
 import { coatingTitle, machineTitle } from "@/models";
-import { formatDateTime } from "@/extensions/date";
+import { formatDateTime, formatElapsed } from "@/extensions/date";
 import { formatArea, formatMeters, formatMm } from "@/extensions/number";
 import { useHistoryDetailViewModel } from "@/viewmodels";
-import { buildCuttingModel, CuttingVisualizer, type StripeKind } from "./calculator";
 import type { SessionRollLine } from "./history/sessionReport";
 
 /** Roll-movement table for one group (main / additional / samples). Each size is
@@ -78,7 +76,6 @@ function MovementTable({ title, lines }: { title: string; lines: SessionRollLine
  */
 export function HistoryDetailView({ sessionId }: { sessionId: string }) {
   const { loading, session, report } = useHistoryDetailViewModel(sessionId);
-  const [activeKind, setActiveKind] = useState<StripeKind | null>(null);
 
   if (loading) {
     return (
@@ -105,14 +102,13 @@ export function HistoryDetailView({ sessionId }: { sessionId: string }) {
 
   const r = session.result;
   const order = session.order;
-  const model = buildCuttingModel(r);
   const yieldPercent = r.total_area_m2 > 0 ? Math.round((r.useful_area_m2 / r.total_area_m2) * 100) : 0;
   const additionalWidths = report.additionalLines.map((l) => formatMm(l.widthMm)).join(" · ");
 
   return (
     <ScreenScaffold
-      title={order.orderNumber || "Без номера"}
-      subtitle={`Джамб № ${session.jumboStockNumber} · ${machineTitle(order.machine)} · ${formatDateTime(session.createdAt)}`}
+      title={`Джамб № ${session.jumboStockNumber}`}
+      subtitle={`${machineTitle(order.machine)} · ${formatDateTime(session.createdAt)}${order.customer ? ` · ${order.customer}` : ""}`}
       toolbar={
         <Link href="/history">
           <Button variant="secondary" size="icon" className="rounded-xl" aria-label="К истории">
@@ -122,27 +118,26 @@ export function HistoryDetailView({ sessionId }: { sessionId: string }) {
       }
       wide
     >
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* ── Параметры нарезки ─────────────────────────────────────────── */}
-        <CardView>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <SectionHeader title="Нарезка" icon={icons.cut} />
-            <StatusBadge
-              label={`Отход ${r.waste_percent.toFixed(1)}%`}
-              tone={r.waste_percent > 7 ? "danger" : "neutral"}
-            />
-          </div>
+      {/* ── Параметры нарезки ───────────────────────────────────────────── */}
+      <CardView>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionHeader title="Нарезка" icon={icons.cut} />
+          <StatusBadge
+            label={`Отход ${r.waste_percent.toFixed(1)}%`}
+            tone={r.waste_percent > 7 ? "danger" : "neutral"}
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
           <div className="space-y-1">
             <InfoRow label="Джамбо" value={`№ ${session.jumboStockNumber}`} />
             <InfoRow label="Материал" value={session.materialCode} />
-            <InfoRow label="Ширина Джамбо" value={formatMm(r.material_width_mm)} />
-            <InfoRow label="Намотка Джамбо" value={formatMeters(r.big_roll_length_m)} />
             <InfoRow label="Дата и время" value={formatDateTime(session.createdAt)} />
             <InfoRow label="Станок" value={machineTitle(order.machine)} />
             <InfoRow label="Оператор" value={order.operator || "—"} />
             <InfoRow label="Заказчик" value={order.customer || "—"} />
-            <InfoRow label="Номер заказа" value={order.orderNumber || "—"} />
-            {order.coating ? <InfoRow label="Красящий слой" value={coatingTitle(order.coating)} /> : null}
+            {order.coating ? <InfoRow label="Красящий слой" value={coatingTitle(order.coating)} last /> : null}
+          </div>
+          <div className="space-y-1">
             <InfoRow label="Основной размер" value={formatMm(r.roll_width_mm)} />
             <InfoRow label="Доп. размеры" value={additionalWidths || "—"} />
             <InfoRow label="Циклов" value={`${r.cycles_used}`} />
@@ -150,20 +145,10 @@ export function HistoryDetailView({ sessionId }: { sessionId: string }) {
             <InfoRow label="Остаток Джамбо" value={formatMeters(r.remaining_jumbo_m)} />
             <InfoRow label="Полезная площадь" value={formatArea(r.useful_area_m2)} />
             <InfoRow label="Выход" value={`${yieldPercent}%`} />
-            <InfoRow label="Отход" value={`${r.waste_percent.toFixed(1)}%`} last />
+            <InfoRow label="Время выполнения" value={formatElapsed(session.startedAt, session.completedAt)} last />
           </div>
-        </CardView>
-
-        {/* ── Схема раскроя (snapshot) ──────────────────────────────────── */}
-        <CardView>
-          <CuttingVisualizer
-            model={model}
-            activeKind={activeKind}
-            onActiveKindChange={setActiveKind}
-            compact
-          />
-        </CardView>
-      </div>
+        </div>
+      </CardView>
 
       {/* ── Рулоны: разбивка по размерам + движение ──────────────────────── */}
       <CardView title="Рулоны из этого Джамбо" icon={icons.dashboard} className="mt-4 space-y-3">

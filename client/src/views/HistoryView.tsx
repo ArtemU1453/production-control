@@ -1,4 +1,5 @@
-import { Trash2 } from "lucide-react";
+import { Link } from "wouter";
+import { ChevronRight, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -106,27 +107,34 @@ export function HistoryView() {
                   key={group.session.id}
                   className="glass noise flex items-center gap-3 rounded-3xl border-card-border p-4"
                 >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
-                    <icons.cut className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold">
-                        {group.session.order.orderNumber || "Без номера"}
-                        {group.session.order.customer ? ` · ${group.session.order.customer}` : ""}
-                      </span>
-                      <StatusBadge
-                        label={`${group.session.result.waste_percent.toFixed(1)}%`}
-                        tone={group.session.result.waste_percent > 7 ? "danger" : "neutral"}
-                      />
+                  <Link
+                    href={`/history/${group.session.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 outline-none"
+                    aria-label="Открыть подробный отчёт по нарезке"
+                  >
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
+                      <icons.cut className="h-5 w-5" />
                     </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {formatDateTime(group.session.createdAt)} · Джамб № {group.session.jumboStockNumber} ·{" "}
-                      {machineTitle(group.session.order.machine)}
-                      {group.session.order.coating ? ` · ${coatingTitle(group.session.order.coating)}` : ""} · Рулонов:{" "}
-                      {group.session.result.total_rolls}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold">
+                          {group.session.order.orderNumber || "Без номера"}
+                          {group.session.order.customer ? ` · ${group.session.order.customer}` : ""}
+                        </span>
+                        <StatusBadge
+                          label={`${group.session.result.waste_percent.toFixed(1)}%`}
+                          tone={group.session.result.waste_percent > 7 ? "danger" : "neutral"}
+                        />
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {formatDateTime(group.session.createdAt)} · Джамб № {group.session.jumboStockNumber} ·{" "}
+                        {machineTitle(group.session.order.machine)}
+                        {group.session.order.coating ? ` · ${coatingTitle(group.session.order.coating)}` : ""} · Рулонов:{" "}
+                        {group.session.result.total_rolls}
+                      </div>
                     </div>
-                  </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  </Link>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -172,16 +180,23 @@ export function HistoryView() {
                         {group.sessions.map((session, index) => (
                           <li key={session.id}>
                             <div className="flex items-center gap-3 rounded-2xl border bg-card/50 p-2.5">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary">
-                                {index + 1}
-                              </span>
-                              <div className="min-w-0 flex-1 text-xs">
-                                <span className="font-semibold">№ {session.jumboStockNumber}</span>{" "}
-                                <span className="text-muted-foreground">
-                                  · изготовлено {session.result.total_main_rolls} рул. · остаток{" "}
-                                  {formatMeters(session.result.remaining_jumbo_m)}
+                              <Link
+                                href={`/history/${session.id}`}
+                                className="flex min-w-0 flex-1 items-center gap-3 outline-none"
+                                aria-label="Открыть подробный отчёт по нарезке"
+                              >
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary">
+                                  {index + 1}
                                 </span>
-                              </div>
+                                <div className="min-w-0 flex-1 text-xs">
+                                  <span className="font-semibold">№ {session.jumboStockNumber}</span>{" "}
+                                  <span className="text-muted-foreground">
+                                    · изготовлено {session.result.total_main_rolls} рул. · остаток{" "}
+                                    {formatMeters(session.result.remaining_jumbo_m)}
+                                  </span>
+                                </div>
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                              </Link>
                               <Button
                                 variant="ghost"
                                 size="icon"

@@ -6,6 +6,7 @@ export {
   type ArchiveTotals,
 } from "./useDashboardViewModel";
 export { useHistoryViewModel } from "./useHistoryViewModel";
+export { useHistoryDetailViewModel } from "./useHistoryDetailViewModel";
 export {
   useProductionViewModel,
   type ProductionParams,

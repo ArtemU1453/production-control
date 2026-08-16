@@ -3,6 +3,7 @@ export { CalculatorView } from "./CalculatorView";
 export { ProductionMachineView } from "./ProductionView";
 export { ProductionOverviewView } from "./ProductionOverviewView";
 export { HistoryView } from "./HistoryView";
+export { HistoryDetailView } from "./HistoryDetailView";
 export { WarehouseView } from "./WarehouseView";
 export { FinishedGoodsView } from "./FinishedGoodsView";
 export { FinishedGoodsPanel } from "./FinishedGoodsPanel";

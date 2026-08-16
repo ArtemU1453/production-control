@@ -1,4 +1,4 @@
-import { defaultSettings, type AppSettings } from "../models";
+import { defaultSettings, setMachineDisplayNames, type AppSettings } from "../models";
 import type { KeyValueStore } from "../storage/KeyValueStore";
 import { storageKeys } from "../storage/StorageKeys";
 
@@ -14,9 +14,14 @@ export function createSettingsRepository(
   return {
     async load() {
       const stored = await store.read<Partial<AppSettings>>(storageKeys.settings);
-      return { ...defaultSettings, ...stored };
+      const settings = { ...defaultSettings, ...stored };
+      // Keep the global machine-name registry in sync with persisted settings so
+      // machineTitle() everywhere reflects the operator's names.
+      setMachineDisplayNames(settings.machineNames);
+      return settings;
     },
     async save(settings) {
+      setMachineDisplayNames(settings.machineNames);
       await store.write(storageKeys.settings, settings);
     },
   };

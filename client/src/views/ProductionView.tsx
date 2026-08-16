@@ -782,6 +782,14 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                   <StaticValue>{vm.order.customer || "—"}</StaticValue>
                 ) : (
                   <div className="space-y-1.5">
+                    <Input
+                      id="order-customer"
+                      value={vm.order.customer}
+                      onChange={(e) => vm.updateOrder("customer", e.target.value)}
+                      disabled={isWarehouseCustomer(vm.order.customer)}
+                      placeholder="Заказчик"
+                      className="rounded-2xl"
+                    />
                     <div className="flex items-center gap-2">
                       <Switch
                         id="order-to-warehouse"
@@ -793,19 +801,6 @@ export function ProductionMachineView({ machine }: { machine: Machine }) {
                         На склад
                       </Label>
                     </div>
-                    <Input
-                      id="order-customer"
-                      value={vm.order.customer}
-                      onChange={(e) => vm.updateOrder("customer", e.target.value)}
-                      disabled={isWarehouseCustomer(vm.order.customer)}
-                      placeholder="Заказчик"
-                      className="rounded-2xl"
-                    />
-                    {isWarehouseCustomer(vm.order.customer) ? (
-                      <p className={cn(AppTypography.caption2, "text-muted-foreground")}>
-                        Складское производство: номер заказа не требуется, вся годная продукция будет оприходована на склад.
-                      </p>
-                    ) : null}
                   </div>
                 )}
               </Field>

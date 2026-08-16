@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { icons } from "@/resources/icons";
 import { AppTypography } from "@/designsystem";
 import { coatingTitle, machineTitle } from "@/models";
-import { formatDateTime, formatElapsed } from "@/extensions/date";
+import { formatDateTime, formatDuration, formatElapsed } from "@/extensions/date";
 import { formatArea, formatMeters, formatMm } from "@/extensions/number";
 import { useHistoryDetailViewModel } from "@/viewmodels";
 import type { SessionRollLine } from "./history/sessionReport";
@@ -145,7 +145,15 @@ export function HistoryDetailView({ sessionId }: { sessionId: string }) {
             <InfoRow label="Остаток Джамбо" value={formatMeters(r.remaining_jumbo_m)} />
             <InfoRow label="Полезная площадь" value={formatArea(r.useful_area_m2)} />
             <InfoRow label="Выход" value={`${yieldPercent}%`} />
-            <InfoRow label="Время выполнения" value={formatElapsed(session.startedAt, session.completedAt)} last />
+            <InfoRow
+              label="Время выполнения"
+              value={
+                session.activeDurationMs != null
+                  ? formatDuration(session.activeDurationMs)
+                  : formatElapsed(session.startedAt, session.completedAt)
+              }
+              last
+            />
           </div>
         </div>
       </CardView>

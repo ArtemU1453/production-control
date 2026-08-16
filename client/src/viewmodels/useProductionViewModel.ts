@@ -17,6 +17,7 @@ import type { CalcResult, CompleteCalculationOutcome } from "@/services";
 import { AuditAction } from "@/admin";
 import { makeId } from "@/utilities/id";
 import { computeTechScrap, TECH_CYCLE_DISPLAY_M } from "@/core/production/techScrap";
+import { computeActiveDurationMs } from "@/core/production/activeDuration";
 
 const USEFUL_WIDTH_TRIM_MM = 20;
 
@@ -1128,6 +1129,9 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
         // (начало/завершение) и брак по Джамбо. Время нужно для «Время
         // выполнения» в истории; берётся из реальных меток запуска/завершения.
         const completedAtIso = new Date().toISOString();
+        // «Время выполнения» = сумма активных интервалов (без пауз): считаем по
+        // реальным меткам pause/resume из журнала между стартом и завершением.
+        const activeDurationMs = computeActiveDurationMs(startedSnapshot, completedAtIso, logSnapshot);
         const allSessions = await cuttingSessions.getAll();
         const runSessions = allSessions.filter(
           (s) => s.id === result.session.id || (chainIdAtFinish != null && s.chainId === chainIdAtFinish),
@@ -1138,6 +1142,7 @@ export function useProductionViewModel(machine: Machine = Machine.machine1): Pro
             ...s,
             startedAt: startedSnapshot ?? s.startedAt,
             completedAt: completedAtIso,
+            ...(activeDurationMs != null ? { activeDurationMs } : {}),
             ...(defectsForJumbo && defectsForJumbo.length > 0 ? { defects: defectsForJumbo } : {}),
           });
         }
